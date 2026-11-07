@@ -364,22 +364,18 @@ class _RootGranthsState extends State<_RootGranths> {
   ]);
 }
 
-/// App-rendered miniature previews, not stock photos or invented screenshots.
+/// Genuine deterministic GranthApp screenshots; see assets/previews/PROVENANCE.md.
 class GranthViewChoice extends StatelessWidget {
   const GranthViewChoice({super.key});
-  Widget _preview(bool folders) => Container(
-    padding: const EdgeInsets.all(10),
-    decoration: BoxDecoration(color: GColors.cream, borderRadius: BorderRadius.circular(12)),
-    child: folders ? Row(children: [
-      for (final title in ['वेद', 'पुराण']) Expanded(child: Padding(padding: const EdgeInsets.all(3), child: GCard(padding: const EdgeInsets.all(8), child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const IconBox(tone: Tone.gold, icon: 'folder-open', size: 30, iconSize: 18), const SizedBox(height: 5), Text(title, style: GText.sans(size: 15, height: 1.3)),
-      ])))),
-    ]) : Column(mainAxisSize: MainAxisSize.min, children: [
-      for (final title in ['श्रीमद्भगवद्गीता', 'कबीर सागर']) Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: GCard(padding: const EdgeInsets.all(6), child: Row(children: [
-        const GIcon('book-open', size: 18, color: GColors.saffron), const SizedBox(width: 8), Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GText.sans(size: 14, height: 1.3))),
-      ]))),
-    ]),
-  );
+  Widget _preview(bool folders) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+    AspectRatio(aspectRatio: 780 / 812, child: ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.asset(
+      folders ? 'assets/previews/granth-folders-example.png' : 'assets/previews/granth-list-example.png',
+      semanticLabel: folders ? 'उदाहरण: असली ऐप का फ़ोल्डर दृश्य' : 'उदाहरण: असली ऐप की ग्रंथ सूची',
+      fit: BoxFit.contain, filterQuality: FilterQuality.medium,
+    ))),
+    const SizedBox(height: 5),
+    Text('ऐप का उदाहरण · आपके ग्रंथ और ग्रिड अलग हो सकते हैं', style: GText.sans(size: 11, color: GColors.muted, height: 1.35)),
+  ]);
   Widget _option(BuildContext context, String mode, String title, String hint) => Padding(padding: const EdgeInsets.only(top: 12), child: Pressable(
     key: ValueKey('granth-view-$mode'), onTap: () => Navigator.pop(context, mode),
     child: GCard(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [

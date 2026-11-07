@@ -95,7 +95,10 @@ jobs:
             rm -f "$apk.idsig"
             out="$("$BT/apksigner" verify -v --min-sdk-version 23 --print-certs "$apk")"
             echo "== $apk"; echo "$out" | grep -E "Verified using v[123] scheme|SHA-256 digest"
-            for v in 1 2 3; do
+            # v1 prints as "JAR signing"; v2/v3 print as "APK Signature Scheme vN".
+            echo "$out" | grep -q "Verified using v1 scheme (JAR signing): true" \
+              || { echo "::error::$apk: v1 signing not verified"; exit 1; }
+            for v in 2 3; do
               echo "$out" | grep -q "Verified using v$v scheme (APK Signature Scheme v$v): true" \
                 || { echo "::error::$apk: v$v signing not verified"; exit 1; }
             done

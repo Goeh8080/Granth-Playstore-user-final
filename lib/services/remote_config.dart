@@ -1,0 +1,727 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io' show Platform;
+
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+
+import '../config.dart';
+import '../models/structure.dart';
+import 'catalog_store.dart';
+import 'ed25519.dart';
+import 'shelves.dart';
+import 'storage.dart';
+import '../state/ui_prefs.dart';
+import '../util/log.dart';
+
+/// One person on the "विशेष जानकार" page.
+class Contact {
+  const Contact({required this.id, required this.name, this.role = '', this.phone = '', this.whatsapp = false, this.order = 0});
+  final String id;
+  final String name;
+  final String role;
+  final String phone;
+  final bool whatsapp;
+  final int order;
+}
+
+/// What the app ships with (names exactly as the owner typed them; phones are NOT invented).
+const List<Contact> kSeedContacts = [
+  Contact(id: 'c1', name: 'अमित दास', order: 1),
+  Contact(id: 'c2', name: 'रामेश्वर दर', order: 2),
+  Contact(id: 'c3', name: 'गौतम दास', order: 3),
+  Contact(id: 'c4', name: 'अशोक दास', order: 4),
+];
+const String kContactsTitle = 'विशेष जानकार';
+
+class Announcement {
+  const Announcement({required this.id, required this.text, this.level = 'info', this.expiresAt, this.pinned = false});
+
+  /// `announcement.pinned == true`: no close button, stays until the admin removes it.
+  final bool pinned;
+  final String id;
+  final String text;
+
+  /// `info` / `warn` / `critical`.
+  final String level;
+  final DateTime? expiresAt;
+  bool get expired => expiresAt != null && DateTime.now().toUtc().isAfter(expiresAt!);
+}
+
+/// A config that passed every check, ready to apply.
+class ParsedConfig {
+  ParsedConfig({
+    required this.version,
+    required this.structure,
+    required this.overrides,
+    required this.hidden,
+    required this.announcement,
+    required this.aiEnabled,
+    this.bhaktIdEnabled = false,
+    this.supportEnabled = true,
+    this.trendingEnabled = true,
+    this.dailyEnabled = true,
+    this.notificationsEnabled = true,
+    this.aiFlagsEnabled = true,
+    required this.analyticsEnabled,
+    required this.analyticsSample,
+    required this.aiEndpoint,
+    required this.contactsTitle,
+    required this.contacts,
+    this.uiGrid,
+    this.uiGridPages = const {},
+    this.uiGridForce = const {},
+    this.uiTaskbar = TaskbarRule.none,
+    this.uiTerms = TermsInfo.fallback,
+    this.uiLoginRequired = true,
+    this.trendingTopics = const [],
+    this.dailyPraman,
+  });
+  final int version;
+  final Structure? structure;
+  final Map<String, String> overrides;
+  final Set<String> hidden;
+  final Announcement? announcement;
+  final bool aiEnabled;
+
+  /// CONTRACT §6.1 feature switches: a missing switch means on; `false` hides the feature.
+  /// `bhakt_id_enabled` is app-side only (not in the contract yet): off unless set true.
+  final bool bhaktIdEnabled, supportEnabled, trendingEnabled, dailyEnabled, notificationsEnabled, aiFlagsEnabled;
+  final bool analyticsEnabled;
+  final double analyticsSample;
+  final String? aiEndpoint;
+  final String contactsTitle;
+  final List<Contact>? contacts;
+
+  /// `ui.grid` (1|2|3); null = the admin has not set it.
+  final int? uiGrid;
+
+  /// `ui.grid_pages` (page → 1|2|3; pages: granths, shelves, pramans, topics, gallery, dashboard).
+  final Map<String, int> uiGridPages;
+
+  /// `ui.grid_pages[page].force` (see [parseGridForce]).
+  final Map<String, int> uiGridForce;
+
+  /// `ui.taskbar` (round-3, provisional; see [parseTaskbar]).
+  final TaskbarRule uiTaskbar;
+
+  /// `ui.terms {url, version}` (round-3; see [parseTerms]).
+  final TermsInfo uiTerms;
+
+  /// `ui.login_required` (§21): Google login is compulsory unless the admin sets exactly `false`.
+  final bool uiLoginRequired;
+
+  /// `trending.topic_ids` (round 14, optional): topic ids to show as "चर्चित विषय"; empty = hidden.
+  final List<String> trendingTopics;
+
+  /// `daily_praman {id, date}` (round 14, optional): the admin's pick for that UTC date.
+  final DailyPick? dailyPraman;
+}
+
+class DailyPick {
+  const DailyPick(this.id, this.date);
+  final String id;
+
+  /// `YYYY-MM-DD`; empty = valid any day.
+  final String date;
+}
+
+final _pickId = RegExp(r'^[A-Za-z0-9_-]{1,40}$');
+final _ymd = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+
+List<String> _parseTrending(Map<String, dynamic>? t) {
+  final v = t?['topic_ids'];
+  if (v is! List) return const [];
+  final out = <String>[];
+  for (final e in v) {
+    final s = e is num && e == e.truncate() ? '${e.toInt()}' : (e is String ? e.trim() : '');
+    if (_pickId.hasMatch(s) && !out.contains(s)) out.add(s);
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+
+DailyPick? _parseDaily(Map<String, dynamic>? d) {
+  if (d == null) return null;
+  final v = d['id'];
+  final id = v is num && v == v.truncate() ? '${v.toInt()}' : (v is String ? v.trim() : '');
+  if (!_pickId.hasMatch(id)) return null;
+  final date = d['date'] is String ? (d['date'] as String).trim() : '';
+  if (date.isNotEmpty && !_ymd.hasMatch(date)) return null;
+  return DailyPick(id, date);
+}
+
+const _religionIcons = {'om', 'crescent', 'khanda', 'cross', 'dharma', 'jain', 'kabir', 'misc'};
+const _groupIcons = {
+  'scroll',
+  'book-red',
+  'book-green',
+  'book-blue',
+  'book-orange',
+  'swords',
+  'books',
+  'quran',
+  'hadees',
+  'granth-sahib',
+  'dasam',
+  'bible',
+  'tripitak',
+  'dhammapad',
+  'kabir-sagar',
+  'bijak',
+  'shabdavali',
+  'misc',
+};
+final _slug = RegExp(r'^[a-z0-9][a-z0-9_-]{0,39}$');
+final _gid = RegExp(r'^[0-9]{1,8}$');
+final _annId = RegExp(r'^[A-Za-z0-9_-]{1,40}$');
+final _phone = RegExp(r'^(\+[0-9]{1,19}|[0-9]{1,20})$');
+
+/// Config icon keys → painted symbols. Unknown → `misc` (never an error).
+String religionIconKey(Object? k) {
+  final s = '$k';
+  if (s == 'ektara') return 'kabir'; // the old key; the इकतारा became the Kabir symbol
+  return _religionIcons.contains(s) ? s : 'misc';
+}
+
+String groupIconKey(Object? k) => _groupIcons.contains('$k') ? '$k' : 'misc';
+
+Map<String, dynamic>? _map(Object? v) => v is Map ? v.cast<String, dynamic>() : null;
+String _title(Object? v) => v is String ? v.trim() : '';
+
+ShelfGroup? _group(Object? raw, {required bool allowSub}) {
+  final j = _map(raw);
+  if (j == null) return null;
+  final id = '${j['id']}';
+  final title = _title(j['title']);
+  if (!_slug.hasMatch(id) || title.isEmpty || title.length > 60) return null;
+  final subs = <ShelfGroup>[];
+  if (allowSub && j['subgroups'] is List) {
+    final seen = <String>{};
+    for (final s in j['subgroups'] as List) {
+      final g = _group(s, allowSub: false);
+      if (g != null && seen.add(g.id)) subs.add(g);
+    }
+  }
+  List<String> ids(Object? v) => [
+    for (final e in (v is List ? v : const []))
+      if (e is String && _gid.hasMatch(e)) e,
+  ];
+  List<String> words(Object? v) => [
+    for (final e in (v is List ? v : const []))
+      if (e is String && e.trim().isNotEmpty) e,
+  ];
+  return ShelfGroup(
+    id: id,
+    title: title,
+    icon: groupIconKey(j['icon']),
+    granthIds: ids(j['granthIds'] ?? j['forceIds']),
+    keywords: words(j['keywords']),
+    notKeywords: words(j['notKeywords']),
+    subgroups: subs,
+    visible: j['visible'] != false,
+    comingSoon: _title(j['coming_soon']),
+  );
+}
+
+/// The config's `structure` → the app's [Structure], or null when it is unusable.
+Structure? parseStructure(Object? raw) {
+  final j = _map(raw);
+  if (j == null || j['religions'] is! List) return null;
+  final religions = <ShelfReligion>[];
+  final seen = <String>{};
+  for (final r in j['religions'] as List) {
+    final m = _map(r);
+    if (m == null) continue;
+    final id = '${m['id']}';
+    final title = _title(m['title']);
+    if (!_slug.hasMatch(id) || id == kOtherId || title.isEmpty || title.length > 60 || !seen.add(id)) continue;
+    final groups = <ShelfGroup>[];
+    final gseen = <String>{};
+    for (final g in (m['groups'] is List ? m['groups'] as List : const [])) {
+      final p = _group(g, allowSub: true);
+      if (p != null && gseen.add(p.id)) groups.add(p);
+    }
+    final tone = '${m['tone']}';
+    religions.add(
+      ShelfReligion(
+        id: id,
+        title: title,
+        tone: const {'saffron', 'maroon', 'gold'}.contains(tone) ? tone : 'saffron',
+        icon: religionIconKey(m['icon']),
+        groups: groups,
+        visible: m['visible'] != false,
+        comingSoon: _title(m['coming_soon']),
+      ),
+    );
+  }
+  if (religions.isEmpty) return null;
+  final o = _map(j['other']);
+  final other = o == null
+      ? const ShelfGroup(id: kOtherId, title: 'अन्य', icon: 'misc')
+      : ShelfGroup(
+          id: kOtherId,
+          title: _title(o['title']).isEmpty ? 'अन्य' : _title(o['title']),
+          icon: religionIconKey(o['icon']),
+          granthIds: [
+            for (final e in (o['forceIds'] is List ? o['forceIds'] as List : const []))
+              if (e is String && _gid.hasMatch(e)) e,
+          ],
+          comingSoon: _title(o['coming_soon']),
+        );
+  return Structure(religions: religions, other: other);
+}
+
+/// `contacts` → valid, visible people, sorted by `order`. Invalid entries are dropped one by one.
+List<Contact>? parseContacts(Object? raw) {
+  if (raw is! List) return null;
+  final out = <Contact>[];
+  final ids = <String>{};
+  for (final e in raw.take(50)) {
+    final m = _map(e);
+    if (m == null) continue;
+    final id = m['id'];
+    final name = m['name'];
+    if (id is! String || !RegExp(r'^[A-Za-z0-9_-]{1,40}$').hasMatch(id) || ids.contains(id)) continue;
+    if (name is! String || name.trim().isEmpty || name.trim().length > 80) continue;
+    final role = m['role'] is String ? (m['role'] as String).trim() : '';
+    if (role.length > 80) continue;
+    final phone = m['phone'] is String ? (m['phone'] as String) : '';
+    if (phone.isNotEmpty && !_phone.hasMatch(phone)) continue;
+    final order = m['order'] is num ? (m['order'] as num).toInt() : 1 << 30;
+    if (m['visible'] == false) {
+      ids.add(id);
+      continue;
+    }
+    ids.add(id);
+    out.add(Contact(id: id, name: name.trim(), role: role, phone: phone, whatsapp: phone.isNotEmpty && m['whatsapp'] == true, order: order));
+  }
+  out.sort((a, b) => a.order.compareTo(b.order));
+  return out;
+}
+
+/// Verify + validate a config text. Returns null (with [why] set) when it must be ignored — the
+/// caller then keeps the last good config / the bundled structure. Never throws.
+ParsedConfig? parseConfig(String text, {int cachedVersion = 0, int appBuild = kBuildNumber, List<int>? publicKey, void Function(String why)? why}) {
+  ParsedConfig? fail(String m) {
+    why?.call(m);
+    return null;
+  }
+
+  try {
+    if (text.length > 70000) return fail('too big');
+    final dec = jsonDecode(text.startsWith('\uFEFF') ? text.substring(1) : text);
+    final j = _map(dec);
+    if (j == null) return fail('not an object');
+    final sigText = j.remove('sig');
+    if (sigText is! String) return fail('no signature');
+    final ok = ed25519Verify(publicKey ?? base64Decode(kConfigPublicKey), canonicalBytes(j), base64Decode(sigText));
+    if (!ok) return fail('bad signature');
+    if (j['schema'] != 1) return fail('schema');
+    final version = j['version'];
+    if (version is! int || version < cachedVersion) return fail('older version');
+    final minApp = j['min_app'];
+    if (minApp is num && minApp > appBuild) return fail('min_app');
+    Structure? structure;
+    if (j.containsKey('structure')) {
+      structure = parseStructure(j['structure']);
+      if (structure == null) return fail('structure');
+    }
+    final leafKeys = {for (final l in (structure ?? Shelves.bundled).leaves()) l.key, kOtherId};
+    final overrides = <String, String>{};
+    final ov = _map(j['overrides']);
+    if (ov != null) {
+      ov.forEach((id, v) {
+        final leaf = _map(v)?['leaf'];
+        if (_gid.hasMatch(id) && leaf is String && leafKeys.contains(leaf)) overrides[id] = leaf;
+      });
+    }
+    final hidden = <String>{
+      for (final e in (j['hidden_granth_ids'] is List ? j['hidden_granth_ids'] as List : const []))
+        if (e is String && _gid.hasMatch(e)) e,
+    };
+    Announcement? ann;
+    final a = _map(j['announcement']);
+    if (a != null && a['enabled'] == true) {
+      final t = _title(a['text']);
+      final id = a['id'];
+      if (t.isNotEmpty && t.length <= 280 && id is String && _annId.hasMatch(id)) {
+        final lv = '${a['level']}';
+        ann = Announcement(
+          id: id,
+          text: t,
+          level: const {'info', 'warn', 'critical'}.contains(lv) ? lv : 'info',
+          expiresAt: a['expires_at'] is String ? DateTime.tryParse(a['expires_at'] as String)?.toUtc() : null,
+          pinned: a['pinned'] == true,
+        );
+      }
+    }
+    final f = _map(j['flags']) ?? const <String, dynamic>{};
+    final sample = f['analytics_sample'];
+    String? ai;
+    final ep = _map(j['endpoints']);
+    if (ep != null && ep['ai'] is String) {
+      final u = Uri.tryParse((ep['ai'] as String).trim());
+      if (u != null && u.scheme == 'https' && u.host.isNotEmpty && (ep['ai'] as String).length <= 200) ai = (ep['ai'] as String).trim().replaceAll(RegExp(r'/+$'), '');
+    }
+    final cp = _map(j['contacts_page']);
+    final ct = cp == null ? '' : _title(cp['title']);
+    return ParsedConfig(
+      version: version,
+      structure: structure,
+      overrides: overrides,
+      hidden: hidden,
+      announcement: ann,
+      aiEnabled: f['ai_enabled'] != false,
+      bhaktIdEnabled: f['bhakt_id_enabled'] == true,
+      supportEnabled: f['support_enabled'] != false,
+      trendingEnabled: f['trending_enabled'] != false,
+      dailyEnabled: f['daily_enabled'] != false,
+      notificationsEnabled: f['notifications_enabled'] != false,
+      aiFlagsEnabled: f['ai_flags_enabled'] != false,
+      analyticsEnabled: f['analytics_enabled'] != false,
+      analyticsSample: sample is num ? sample.toDouble().clamp(0.0, 1.0) : 1.0,
+      aiEndpoint: ai,
+      contactsTitle: ct.isNotEmpty && ct.length <= 60 ? ct : kContactsTitle,
+      contacts: parseContacts(j['contacts']),
+      uiGrid: _parseGrid(_map(j['ui'])),
+      uiGridPages: parseGridPages(_map(j['ui'])),
+      uiGridForce: parseGridForce(_map(j['ui'])),
+      uiTaskbar: parseTaskbar(_map(j['ui'])),
+      uiTerms: parseTerms(_map(j['ui'])),
+      uiLoginRequired: _map(j['ui'])?['login_required'] != false,
+      trendingTopics: _parseTrending(_map(j['trending'])),
+      dailyPraman: _parseDaily(_map(j['daily_praman'])),
+    );
+  } catch (e) {
+    return fail('error: $e');
+  }
+}
+
+/// `ui.grid`: an integer 1..3 (a whole double like 2.0 counts, out of range is clamped); anything
+/// else is "not set".
+int? _parseGrid(Map<String, dynamic>? ui) {
+  final g = ui?['grid'];
+  if (g is! num || !g.isFinite) return null;
+  return g.round().clamp(1, 3);
+}
+
+/// Pages the admin can set a grid for in `ui.grid_pages`.
+const kGridPages = {'granths', 'shelves', 'pramans', 'topics', 'gallery', 'dashboard'};
+
+/// Short names the admin panel may use for a page (`granth` → `granths`, …).
+const _kGridAlias = {'granth': 'granths', 'shelf': 'shelves', 'praman': 'pramans', 'topic': 'topics'};
+
+int? _gridNum(Object? v) => v is num && v.isFinite && v == v.roundToDouble() && v >= 1 && v <= 3 ? v.toInt() : null;
+
+Map<String, int> _gridPagesPart(Map<String, dynamic>? ui, String field) {
+  final m = ui?['grid_pages'];
+  if (m is! Map) return const {};
+  final out = <String, int>{};
+  for (final e in m.entries) {
+    if (e.key is! String) continue;
+    final page = _kGridAlias[e.key] ?? e.key as String;
+    if (!kGridPages.contains(page)) continue;
+    final v = e.value;
+    final n = field == 'default' ? (_gridNum(v) ?? (v is Map ? _gridNum(v['default']) : null)) : (v is Map ? _gridNum(v['force']) : null);
+    if (n != null) out[page] = n;
+  }
+  return out;
+}
+
+/// `ui.grid_pages` defaults: `{page: n}` or `{page: {default: n}}` (n = 1|2|3). Only a default:
+/// the user's own choice wins. Unknown pages and bad values are dropped.
+Map<String, int> parseGridPages(Map<String, dynamic>? ui) => _gridPagesPart(ui, 'default');
+
+/// `ui.grid_pages` forced grids: `{page: {force: n}}` — overrides the user, the grid button is locked.
+Map<String, int> parseGridForce(Map<String, dynamic>? ui) => _gridPagesPart(ui, 'force');
+
+/// `ui.taskbar` as the admin sent it: [force] (the user can not change it) and/or [def]
+/// (used until the user picks on/off in Settings). Both null = not set.
+@immutable
+class TaskbarRule {
+  const TaskbarRule({this.force, this.def});
+  final bool? force, def;
+  static const none = TaskbarRule();
+  @override
+  bool operator ==(Object other) => other is TaskbarRule && other.force == force && other.def == def;
+  @override
+  int get hashCode => Object.hash(force, def);
+}
+
+/// Defensive reading of `ui.taskbar` until the contract names it:
+/// * `true` / `false` → the default (the user's own Settings choice still wins);
+/// * `{force: bool}` → forced on/off, the Settings toggle is locked;
+/// * `{enabled: false}` → forced off (the admin switched the feature off);
+///   `{enabled: true}` → allowed, default on unless `default` says otherwise;
+/// * `{default: bool}` → the default;
+/// * anything else (strings, numbers, null) → not set.
+TaskbarRule parseTaskbar(Map<String, dynamic>? ui) {
+  final v = ui?['taskbar'];
+  if (v is bool) return TaskbarRule(def: v);
+  if (v is! Map) return TaskbarRule.none;
+  final force = v['force'], enabled = v['enabled'], def = v['default'];
+  if (force is bool) return TaskbarRule(force: force);
+  if (enabled == false) return const TaskbarRule(force: false);
+  if (def is bool) return TaskbarRule(def: def);
+  if (enabled == true) return const TaskbarRule(def: true);
+  return TaskbarRule.none;
+}
+
+/// `ui.terms`: the full terms page and its version. Missing/invalid parts fall back to
+/// [kTermsUrl] / 1 (only https URLs are taken; the version is a whole number ≥ 1).
+@immutable
+class TermsInfo {
+  const TermsInfo(this.url, this.version, [this.privacyUrl = kPrivacyUrl]);
+  final String url, privacyUrl;
+  final int version;
+  static const fallback = TermsInfo(kTermsUrl, 1);
+  @override
+  bool operator ==(Object other) => other is TermsInfo && other.url == url && other.privacyUrl == privacyUrl && other.version == version;
+  @override
+  int get hashCode => Object.hash(url, privacyUrl, version);
+}
+
+const kTermsUrl = 'https://granth-management.web.app/terms';
+const kPrivacyUrl = 'https://granth-management.web.app/privacy';
+
+/// Play account-deletion page (also entered in Play Console → Data safety).
+const kDeleteAccountUrl = 'https://granth-management.web.app/delete-account';
+
+TermsInfo parseTerms(Map<String, dynamic>? ui) {
+  final t = ui?['terms'];
+  if (t is! Map) return TermsInfo.fallback;
+  String https(Object? u, String fb) {
+    final uri = u is String ? Uri.tryParse(u.trim()) : null;
+    return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty ? (u as String).trim() : fb;
+  }
+
+  final v = t['version'];
+  final url = https(t['url'], kTermsUrl);
+  final ver = v is num && v.isFinite && v >= 1 ? v.floor() : (v is String ? (int.tryParse(v.trim()) ?? 1).clamp(1, 1 << 30) : 1);
+  return TermsInfo(url, ver, https(t['privacy_url'], kPrivacyUrl));
+}
+
+/// The bar is on: admin force › the user's choice › admin default › off.
+bool resolveTaskbar(TaskbarRule r, bool? local) => r.force ?? local ?? r.def ?? false;
+
+String _normEtag(String? e) => (e ?? '').trim().replaceFirst(RegExp(r'^W/'), '');
+
+/// The signed remote config: folders, hidden granths, announcement, flags, contacts.
+///
+/// Everything has a fallback: the bundled structure and seed contacts. A failed fetch, a bad
+/// signature, a wrong schema, an older version or an app older than `min_app` changes nothing and
+/// shows nothing. Fetched on every catalog sync with a conditional GET (ETag).
+class RemoteConfig extends ChangeNotifier {
+  RemoteConfig({Dio? dio, this.url = kConfigUrl, this.build = kBuildNumber, this.publicKey})
+    : _dio = dio ?? Dio(BaseOptions(connectTimeout: const Duration(seconds: 8), receiveTimeout: const Duration(seconds: 8)));
+  static RemoteConfig I = RemoteConfig();
+
+  static const fileName = 'remote_config.json';
+  static const kEtag = 'granth-cfg-etag';
+  static const kDismissed = 'granth-ann-dismissed';
+
+  final Dio _dio;
+  final String url;
+  final int build;
+
+  /// Tests sign with their own key; the app always uses [kConfigPublicKey].
+  final List<int>? publicKey;
+
+  /// Off under `flutter test` (no test talks to the real server unless it builds its own instance).
+  bool enabled = !Platform.environment.containsKey('FLUTTER_TEST');
+
+  int version = 0;
+  Set<String> hidden = const {};
+  Announcement? announcement;
+  bool aiEnabled = true;
+  bool bhaktIdEnabled = false, supportEnabled = true, trendingEnabled = true, dailyEnabled = true, notificationsEnabled = true, aiFlagsEnabled = true;
+  bool analyticsEnabled = true;
+  double analyticsSample = 1.0;
+  String? aiEndpoint;
+  String contactsTitle = kContactsTitle;
+  List<Contact> contacts = kSeedContacts;
+
+  /// The admin's default grid columns (`ui.grid`), null = not set.
+  int? uiGrid;
+
+  /// `ui.grid_pages` (see [ParsedConfig.uiGridPages]).
+  Map<String, int> uiGridPages = const {};
+
+  /// Pages whose grid the admin forces (overrides the user's choice).
+  Map<String, int> uiGridForce = const {};
+
+  /// `ui.taskbar` (see [parseTaskbar]).
+  TaskbarRule uiTaskbar = TaskbarRule.none;
+
+  /// `ui.terms` (see [parseTerms]).
+  TermsInfo uiTerms = TermsInfo.fallback;
+  bool uiLoginRequired = true;
+
+  /// The admin's grid for [page]: `ui.grid_pages[page]`, else `ui.grid`, else null (local default).
+  int? gridFor(String page) => uiGridPages[page] ?? uiGrid;
+
+  /// The admin forces [page]'s grid (null = the user may choose).
+  int? gridForced(String page) => uiGridForce[page];
+
+  /// Round 14 optional fields (see [ParsedConfig]).
+  List<String> trendingTopics = const [];
+  DailyPick? dailyPraman;
+
+  /// Last refresh outcome, for tests/diagnostics: `updated`, `unchanged`, `ignored:<why>`, `failed`.
+  String lastResult = 'none';
+
+  /// Version string sent with analytics.
+  int get cfgVersion => version;
+
+  bool get hasContacts => contacts.isNotEmpty;
+
+  /// The banner to show now (enabled, not expired, not dismissed).
+  Announcement? get banner {
+    final a = announcement;
+    if (a == null || a.expired) return null;
+    if (a.pinned) return a; // cannot be dismissed
+    return Store.I.getString(kDismissed) == a.id ? null : a;
+  }
+
+  Future<void> dismissBanner() async {
+    final a = announcement;
+    if (a == null || a.pinned) return;
+    await Store.I.setString(kDismissed, a.id);
+    notifyListeners();
+  }
+
+  /// Boot: apply the saved config (checked again — a damaged / tampered file is dropped).
+  Future<void> load() async {
+    final early = _booting;
+    try {
+      final text = await Store.I.readText(fileName);
+      if (text == null) return;
+      final p = parseConfig(text, appBuild: build, publicKey: publicKey);
+      if (p == null) {
+        unawaited(Store.I.remove(kEtag));
+        return;
+      }
+      // Boot timeout passed (slow disk): the first frames used defaults, so redraw now.
+      _apply(p, notify: !early());
+    } catch (e) {
+      log('remote config: load: $e');
+    }
+  }
+
+  /// True until runApp has drawn (main sets [booted]); a late [load] then notifies.
+  bool booted = false;
+  bool Function() get _booting => () => !booted;
+
+  Future<bool>? _running;
+
+  /// Conditional GET; returns true when a newer config was applied. Never throws.
+  Future<bool> refresh() => _running ??= _refresh().whenComplete(() => _running = null);
+
+  Future<bool> _refresh() async {
+    if (!enabled) return false;
+    try {
+      final etag = Store.I.getString(kEtag);
+      final res = await _dio.get<String>(
+        url,
+        options: Options(responseType: ResponseType.plain, headers: {if (etag != null && etag.isNotEmpty && version > 0) 'If-None-Match': etag}, validateStatus: (s) => s == 200 || s == 304),
+      );
+      if (res.statusCode == 304) {
+        lastResult = 'unchanged';
+        return false;
+      }
+      final body = res.data ?? '';
+      final newTag = res.headers.value('etag');
+      if (newTag != null && version > 0 && _normEtag(newTag) == _normEtag(etag)) {
+        lastResult = 'unchanged';
+        return false;
+      }
+      String? why;
+      final p = parseConfig(body, cachedVersion: version, appBuild: build, publicKey: publicKey, why: (m) => why = m);
+      if (p == null) {
+        lastResult = 'ignored:$why';
+        return false;
+      }
+      final changed = p.version != version || !_same(body);
+      await Store.I.writeText(fileName, body);
+      if (newTag != null) await Store.I.setString(kEtag, newTag);
+      _cachedBody = body;
+      if (changed) _apply(p);
+      lastResult = 'updated';
+      return changed;
+    } catch (e) {
+      lastResult = 'failed';
+      log('remote config: $e');
+      return false;
+    }
+  }
+
+  String? _cachedBody;
+  bool _same(String body) => _cachedBody == body;
+
+  void _apply(ParsedConfig p, {bool notify = true}) {
+    version = p.version;
+    hidden = p.hidden;
+    announcement = p.announcement;
+    aiEnabled = p.aiEnabled;
+    bhaktIdEnabled = p.bhaktIdEnabled;
+    supportEnabled = p.supportEnabled;
+    trendingEnabled = p.trendingEnabled;
+    dailyEnabled = p.dailyEnabled;
+    notificationsEnabled = p.notificationsEnabled;
+    aiFlagsEnabled = p.aiFlagsEnabled;
+    analyticsEnabled = p.analyticsEnabled;
+    analyticsSample = p.analyticsSample;
+    aiEndpoint = p.aiEndpoint;
+    contactsTitle = p.contactsTitle;
+    contacts = p.contacts ?? kSeedContacts;
+    final gridChanged = uiGrid != p.uiGrid || !mapEquals(uiGridPages, p.uiGridPages) || !mapEquals(uiGridForce, p.uiGridForce) || uiTaskbar != p.uiTaskbar;
+    uiTaskbar = p.uiTaskbar;
+    uiTerms = p.uiTerms;
+    uiLoginRequired = p.uiLoginRequired;
+    uiGrid = p.uiGrid;
+    uiGridPages = p.uiGridPages;
+    uiGridForce = p.uiGridForce;
+    trendingTopics = p.trendingTopics;
+    dailyPraman = p.dailyPraman;
+    Shelves.useRemote(p.structure, p.overrides);
+    CatalogStore.I.setHidden(p.hidden);
+    if (gridChanged) UiPrefs.I.remoteChanged();
+    if (notify) notifyListeners();
+  }
+
+  /// Tests: apply a parsed config directly.
+  @visibleForTesting
+  void debugApply(ParsedConfig p) => _apply(p);
+
+  /// Tests: forget everything (back to the bundled state).
+  @visibleForTesting
+  void debugReset() {
+    version = 0;
+    hidden = const {};
+    announcement = null;
+    aiEnabled = true;
+    bhaktIdEnabled = false;
+    supportEnabled = true;
+    trendingEnabled = true;
+    dailyEnabled = true;
+    notificationsEnabled = true;
+    aiFlagsEnabled = true;
+    analyticsEnabled = true;
+    analyticsSample = 1.0;
+    aiEndpoint = null;
+    contactsTitle = kContactsTitle;
+    contacts = kSeedContacts;
+    uiGrid = null;
+    uiGridPages = const {};
+    uiGridForce = const {};
+    uiTaskbar = TaskbarRule.none;
+    uiTerms = TermsInfo.fallback;
+    uiLoginRequired = true;
+    trendingTopics = const [];
+    dailyPraman = null;
+    lastResult = 'none';
+    _cachedBody = null;
+    Shelves.useRemote(null, const {});
+  }
+}

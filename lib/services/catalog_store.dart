@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import '../ai/quiz_v2_flow.dart';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 
@@ -434,6 +436,7 @@ class CatalogStore extends ChangeNotifier {
     unawaited(AdminKnowledge.I.refresh());
     unawaited(AdminSync.I.poll());
     unawaited(AiFeedback.I.flush());
+    unawaited(AiV2Flow.I.flushReports());
     if (!silent) {
       status = SyncStatus.syncing;
       error = null;

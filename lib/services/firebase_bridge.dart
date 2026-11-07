@@ -15,6 +15,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import '../ai/v2_drafts.dart';
 import '../state/router.dart';
 import '../state/toast.dart';
 import 'analytics.dart';
@@ -349,6 +350,7 @@ class FirebaseBridge extends ChangeNotifier {
   /// local account / tickets are cleared and the login gate shows. Returns null or a Hindi error.
   Future<String?> deleteAccount() async {
     if (debugDeleteStep == null && !ready) return 'खाता अभी हटाया नहीं जा सकता (Firebase चालू नहीं)।';
+    final deletingUid = uid;
     _gen++;
     busy = true;
     error = null;
@@ -399,6 +401,7 @@ class FirebaseBridge extends ChangeNotifier {
       try {
         if (debugDeleteStep == null) await FirebaseAuth.instance.signOut();
       } catch (_) {}
+      if (deletingUid != null) await AiV2DraftStore.I.clearOwner(deletingUid);
       SupportService.I.clearLocal();
       busy = false;
       stage = null;

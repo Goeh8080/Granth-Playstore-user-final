@@ -7,6 +7,8 @@ import '../services/remote_config.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/services.dart';
 
+import '../ai/quiz_v2_flow.dart';
+import '../widgets/quiz_v2_view.dart';
 import '../ai/ai_client.dart';
 import '../ai/chat_controller.dart';
 import '../ai/chat_store.dart';
@@ -177,7 +179,7 @@ class _AiPanelState extends State<AiPanel> {
                           label: 'ज्ञान चर्चा',
                           fontSize: 13,
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          onTap: c.sending ? null : _gyan,
+                          onTap: c.sending ? null : () => _gyan(context),
                         ),
                         Pill(
                           key: const ValueKey('ai-new'),
@@ -253,8 +255,55 @@ class _AiPanelState extends State<AiPanel> {
   }
 }
 
-Future<void> _gyan() async {
-  if (!await ChatController.I.startGyan()) Toast.show('अभी चर्चा के लिए कोई प्रश्न नहीं है');
+Future<void> _gyan(BuildContext context) async {
+  final flow=AiV2Flow.I;
+  final mode=await flow.prepare();
+  if(!context.mounted)return;
+  if(mode=='legacy'){
+    if(!await ChatController.I.startGyan())Toast.show('अभी चर्चा के लिए कोई प्रश्न नहीं है');
+  }else if(mode=='ready'){
+    await showPop<void>(context,(_)=>_QuizV2Sheet(flow:flow));
+  }else if(mode=='auth'){
+    Toast.show('ज्ञान चर्चा के लिए Google से साइन इन करें');
+  }else if(mode=='disabled'){
+    Toast.show('ज्ञान चर्चा अभी admin ने बंद रखी है');
+  }
+}
+
+String _v2ReportMessage(String status)=>switch(status){
+ 'queued'=>'रिपोर्ट सुरक्षित है — भेजना बाकी है',
+ 'sent'=>'यह रिपोर्ट admin को भेजी जा चुकी है',
+ 'auth'=>'रिपोर्ट के लिए Google से साइन इन करें',
+ 'legacy_quiz'=>'पुरानी चर्चा की जगह नई ज्ञान चर्चा से प्रश्न की रिपोर्ट भेजें',
+ 'disabled'=>'इस प्रकार की रिपोर्ट अभी admin ने बंद रखी है',
+ _=>'रिपोर्ट सेव नहीं हुई — कम शब्दों में फिर कोशिश करें',
+};
+
+class _QuizV2Sheet extends StatelessWidget {
+ const _QuizV2Sheet({required this.flow});
+ final AiV2Flow flow;
+ Future<void> _report(BuildContext context)async{
+   final attempt=flow.question?.attemptId, owner=flow.currentOwner;
+   final result=await showPop<AiDownResult>(context,(_)=>const AiReasonCard(),blurFocus:true);
+   if(result==null||!context.mounted)return;
+   if(flow.currentOwner!=owner||flow.question?.attemptId!=attempt){Toast.show(_v2ReportMessage('auth'));return;}
+   final status=await flow.reportQuiz(correction:result.correction?result.text:null,reason:result.correction?null:result.text);
+   Toast.show(_v2ReportMessage(status));
+   if(status=='queued')unawaited(flow.flushReports());
+ }
+ @override Widget build(BuildContext context)=>ListenableBuilder(listenable:flow,builder:(context,_)=>SheetCard(children:[
+   SheetHead(title:'ज्ञान चर्चा',onBack:()=>Navigator.pop(context)),
+   QuizV2View(state:flow.state,question:flow.question,grade:flow.grade,reason:flow.exhaustionReason,
+     busy:flow.busy||flow.pending,onSource:flow.chooseSource,onAnswer:flow.submit,onNext:flow.canAdvance?flow.next:null,onChangeSource:flow.changeSource,
+     onReport:RemoteConfig.I.aiFlagsEnabled&&flow.canReportQuiz?()=>_report(context):null,reportStatus:flow.quizReportStatus),
+   if(flow.busy)const Padding(padding:EdgeInsets.only(top:12),child:LinearProgressIndicator()),
+   if(flow.errorCode!=null&&!flow.busy)...[
+     const SizedBox(height:12),
+     Text(flow.errorCode=='auth_required'?'Google से दोबारा साइन इन करें।':flow.errorCode=='question_unavailable'?'यह प्रश्न अब उपलब्ध नहीं है। अगला प्रश्न चुनें।':'अनुरोध पूरा नहीं हुआ। वही अनुरोध फिर भेज सकते हैं।',style:GText.sans(size:14,height:1.5)),
+     if(flow.pending)SheetButton(label:'फिर कोशिश करें',onTap:flow.retry),
+     if(flow.canAdvance&&flow.grade==null)SheetButton(label:'अगला प्रश्न',onTap:flow.next),
+   ],
+ ]));
 }
 
 /// Sends [q] unless the catalog is not there yet (the answer must rest on granth data).
@@ -408,29 +457,47 @@ class _AnswerBubbleState extends State<AnswerBubble> {
     if (!was) Toast.show('धन्यवाद! आपकी राय दर्ज हो गई');
   }
 
-  Future<void> _down() async {
-    if (AiFeedback.I.vote(_fkey) == -1) return Toast.show(AiFeedback.I.isQueued(_fkey) ? 'रिपोर्ट सुरक्षित है — इंटरनेट मिलने पर भेजेंगे' : 'यह उत्तर पहले ही admin को भेजा जा चुका है');
-    final r = await showPop<AiDownResult>(context, (ctx) => const AiReasonCard(), blurFocus: true);
-    if (r == null) return; // closed: nothing sent
-    if (r.correction) {
-      unawaited(AiFeedback.I.correct(_fkey, question: widget.question, answer: _plain, correction: r.text, chat: widget.chatId));
-      setState(() => _corrSent = true);
-      return Toast.show('धन्यवाद! आपका सुधार admin को जाँच के लिए भेजा जा रहा है');
-    }
-    unawaited(AiFeedback.I.down(_fkey, question: widget.question, answer: _plain, reason: r.text, chat: widget.chatId));
-    Toast.show('धन्यवाद! यह उत्तर admin को जाँच के लिए भेजा जा रहा है');
+  bool _flagBusy=false;
+  Future<bool> _tryV2({required String question,required String answer,String? correction,String? reason})async{
+    final status=await AiV2Flow.I.tryReportChat(correction==null?_fkey:'$_fkey:c',question:question,answer:answer,correction:correction,reason:reason,legacyQuiz:msg.quizQuestion!=null||msg.quizResult!=null);
+    if(status=='legacy')return false;
+    Toast.show(_v2ReportMessage(status));
+    if(status=='queued')unawaited(AiV2Flow.I.flushReports());
+    return true;
   }
-
-  bool _corrSent = false;
-
-  /// Worker w3 detected "ye galat hai, asal mein …": send it to the admin as a correction.
-  void _sendCorrection() {
-    final c = msg.correction;
-    if (c == null || _corrSent) return;
-    if (c.text.trim().isEmpty) return Toast.show('सुधार खाली है');
-    unawaited(AiFeedback.I.correct(_fkey, question: c.question.isNotEmpty ? c.question : widget.question, answer: c.answer, correction: c.text, chat: widget.chatId));
-    setState(() => _corrSent = true);
-    Toast.show('धन्यवाद! आपका सुधार admin को जाँच के लिए भेजा जा रहा है');
+  Future<void> _down() async {
+    if(_flagBusy)return;
+    final existing=AiV2Flow.I.reportStatus(_fkey);
+    if(existing!=null)return Toast.show(_v2ReportMessage(existing));
+    if(AiFeedback.I.vote(_fkey)==-1)return Toast.show(AiFeedback.I.isQueued(_fkey)?'रिपोर्ट सुरक्षित है — इंटरनेट मिलने पर भेजेंगे':'यह उत्तर पहले ही admin को भेजा जा चुका है');
+    _flagBusy=true;
+    final owner=AiV2Flow.I.currentOwner;
+    try{
+      final r=await showPop<AiDownResult>(context,(_)=>const AiReasonCard(),blurFocus:true);
+      if(r==null||!mounted)return;
+      if(owner!=AiV2Flow.I.currentOwner)return Toast.show(_v2ReportMessage('auth'));
+      if(await _tryV2(question:widget.question,answer:_plain,correction:r.correction?r.text:null,reason:r.correction?null:r.text))return;
+      if(r.correction){
+        unawaited(AiFeedback.I.correct(_fkey,question:widget.question,answer:_plain,correction:r.text,chat:widget.chatId));
+        if(mounted)setState(()=>_corrSent=true);
+      }else{
+        unawaited(AiFeedback.I.down(_fkey,question:widget.question,answer:_plain,reason:r.text,chat:widget.chatId));
+      }
+      Toast.show('धन्यवाद! रिपोर्ट admin को जाँच के लिए भेजी जा रही है');
+    }finally{_flagBusy=false;}
+  }
+  bool _corrSent=false;
+  Future<void> _sendCorrection()async{
+    final c=msg.correction;
+    if(c==null||_corrSent||_flagBusy)return;
+    if(c.text.trim().isEmpty)return Toast.show('सुधार खाली है');
+    _flagBusy=true;
+    try{
+      if(await _tryV2(question:c.question.isNotEmpty?c.question:widget.question,answer:c.answer,correction:c.text))return;
+      unawaited(AiFeedback.I.correct(_fkey,question:c.question.isNotEmpty?c.question:widget.question,answer:c.answer,correction:c.text,chat:widget.chatId));
+      if(mounted)setState(()=>_corrSent=true);
+      Toast.show('धन्यवाद! आपका सुधार admin को जाँच के लिए भेजा जा रहा है');
+    }finally{_flagBusy=false;}
   }
 
   Future<void> _cardPdf() async {
@@ -454,7 +521,8 @@ class _AnswerBubbleState extends State<AnswerBubble> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(listenable:AiV2Flow.I,builder:(context,_)=>_answer(context));
+  Widget _answer(BuildContext context) {
     final cited = [for (final id in msg.cited) ?widget.find(id)];
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -504,9 +572,9 @@ class _AnswerBubbleState extends State<AnswerBubble> {
                       child: Pill(
                         key: const ValueKey('ai-send-correction'),
                         icon: 'send',
-                        label: _corrSent ? 'सुधार भेजा ✓' : 'सुधार एडमिन को भेजें',
+                        label: AiV2Flow.I.reportStatus('$_fkey:c')=='queued'?'सुधार भेजना बाकी':AiV2Flow.I.reportStatus('$_fkey:c')=='sent'?'सुधार भेजा ✓':_corrSent?'सुधार भेजा ✓':'सुधार एडमिन को भेजें',
                         tone: PillTone.topic,
-                        onTap: _corrSent ? null : _sendCorrection,
+                        onTap: _corrSent||AiV2Flow.I.reportStatus('$_fkey:c')!=null?null:_sendCorrection,
                       ),
                     ),
                   ],
@@ -515,13 +583,14 @@ class _AnswerBubbleState extends State<AnswerBubble> {
                     listenable: AiFeedback.I,
                     builder: (context, _) {
                       final v = AiFeedback.I.vote(_fkey);
+                      final v2=AiV2Flow.I.reportStatus(_fkey);
                       return Wrap(
                         spacing: 8,
                         runSpacing: 8,
                         children: [
                           Pill(key: const ValueKey('ai-up'), icon: 'thumbs-up', label: v == 1 ? 'पसंद ✓' : 'पसंद', tone: v == 1 ? PillTone.topic : PillTone.plain, onTap: _up),
                           if (RemoteConfig.I.aiFlagsEnabled)
-                            Pill(key: const ValueKey('ai-down'), icon: 'thumbs-down', label: v == -1 ? (AiFeedback.I.isQueued(_fkey) ? 'भेजना बाकी' : 'भेजा ✓') : 'गलत', tone: v == -1 ? PillTone.topic : PillTone.plain, onTap: _down),
+                            Pill(key: const ValueKey('ai-down'), icon: 'thumbs-down', label: v2=='queued'?'भेजना बाकी':v2=='sent'?'भेजा ✓':v == -1 ? (AiFeedback.I.isQueued(_fkey) ? 'भेजना बाकी' : 'भेजा ✓') : 'गलत', tone: v == -1||v2!=null ? PillTone.topic : PillTone.plain, onTap: _down),
                           Pill(key: const ValueKey('ai-share'), icon: 'share-2', label: 'शेयर', onTap: _share),
                           Pill(key: const ValueKey('ai-copy'), icon: 'copy', label: 'कॉपी', onTap: _copy),
                           Pill(key: const ValueKey('ai-card-pdf'), icon: 'file-text', label: _busy ? 'बन रही…' : 'कार्ड PDF', onTap: _cardPdf),
@@ -603,7 +672,7 @@ class _AiReasonCardState extends State<AiReasonCard> {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: SheetButton(key: const ValueKey('ai-reason-send'), label: 'भेजें', primary: true, onTap: () => Navigator.pop<AiDownResult>(context, (text: _c.text.trim(), correction: false))),
+              child: SheetButton(key: const ValueKey('ai-reason-send'), label: 'भेजें', primary: true, onTap: () {if(_c.text.trim().runes.length>300){Toast.show('कारण 300 अक्षरों तक रखें; लंबा सुधार अलग से भेजें');return;}Navigator.pop<AiDownResult>(context,(text:_c.text.trim(),correction:false));}),
             ),
           ],
         ),

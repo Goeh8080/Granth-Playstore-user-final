@@ -50,7 +50,7 @@ jobs:
 
       - name: Set up Shorebird
         if: env.DO_SIGN == 'true' && env.DO_SHOREBIRD == 'true' && hashFiles('shorebird.yaml') != ''
-        uses: shorebird/setup-shorebird@v1
+        uses: shorebirdtech/setup-shorebird@v1
         with:
           cache: true
 

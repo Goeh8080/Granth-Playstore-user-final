@@ -29,6 +29,50 @@ const kGyanStart = 'ज्ञान चर्चा: मुझसे एक प�
 /// `next_question` as a card, so that tail is removed from the answer text.
 String stripNextQuestionTail(String s) => s.replaceFirst(RegExp(r'\s*\**\s*अगला प्रश्न\s*[:：]?\s*\**\s*[:：]?[\s\S]*$'), '').trimRight();
 
+/// Compares quiz question texts: case, spaces and punctuation do not count.
+String normalizeQuizText(String text) => text.toLowerCase().replaceAll(RegExp(r'[\s\p{P}*_`]+', unicode: true), '');
+
+/// Removes lines of an answer that only repeat one of [questions] (with or without a
+/// "प्रश्न:" label), so a quiz question is never shown twice in a row.
+String stripRepeatedQuestions(String text, Iterable<String> questions) {
+  final qs = {for (final q in questions) normalizeQuizText(q)}..remove('');
+  if (qs.isEmpty || text.isEmpty) return text;
+  final label = RegExp(r'^\s*[*_]*\s*(?:अगला\s+)?प्रश्न\s*[:：]?\s*[*_]*\s*[:：]?');
+  final kept = [
+    for (final line in text.split('\n'))
+      if (!qs.contains(normalizeQuizText(line.replaceFirst(label, ''))) || normalizeQuizText(line).isEmpty) line,
+  ];
+  return kept.join('\n').replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
+}
+
+/// Which of [msgs] the chat shows: a quiz question asked again later (same id or text) is shown
+/// once, and an assistant message that only repeats a neighbouring quiz question is hidden. The
+/// question being answered right now ([activeId]) always stays visible.
+List<int> visibleChatIndexes(List<ChatMsg> msgs, {String? activeId}) {
+  final seenIds = <String>{}, seenTexts = <String>{};
+  final out = <int>[];
+  for (var i = 0; i < msgs.length; i++) {
+    final m = msgs[i];
+    final q = m.quizQuestion;
+    if (q != null) {
+      final t = normalizeQuizText(q.text);
+      final dup = seenIds.contains(q.id) || (t.isNotEmpty && seenTexts.contains(t));
+      seenIds.add(q.id);
+      seenTexts.add(t);
+      if (dup && q.id != activeId && m.quizResult == null) continue;
+      out.add(i);
+      continue;
+    }
+    if (!m.isUser && !m.isAdmin && m.quizResult == null && m.refs.isEmpty && m.cited.isEmpty) {
+      final t = normalizeQuizText(m.text);
+      bool same(int j) => j >= 0 && j < msgs.length && msgs[j].quizQuestion != null && normalizeQuizText(msgs[j].quizQuestion!.text) == t;
+      if (t.isNotEmpty && (same(i - 1) || same(i + 1))) continue;
+    }
+    out.add(i);
+  }
+  return out;
+}
+
 const kEmptyAnswer = 'क्षमा करें, इस प्रश्न का सीधा उत्तर नहीं मिला।';
 
 class AdminOffer {
@@ -256,8 +300,7 @@ class ChatController extends ChangeNotifier {
       // Never show raw candidate ids ("id-467"): the praman / note / topic name instead.
       final names = {for (final x in cands) x.id: x.granth.isEmpty ? x.title : '${x.title} (${x.granth})'};
       final candidate = inQuiz ? a.nextQuestion : null;
-      String normalized(String text) => text.toLowerCase().replaceAll(RegExp(r'[\s\p{P}]+', unicode: true), '');
-      final repeated = candidate != null && c.messages.any((m) => m.quizQuestion?.id == candidate.id || (m.quizQuestion != null && normalized(m.quizQuestion!.text) == normalized(candidate.text)));
+      final repeated = candidate != null && c.messages.any((m) => m.quizQuestion?.id == candidate.id || (m.quizQuestion != null && normalizeQuizText(m.quizQuestion!.text) == normalizeQuizText(candidate.text)));
       final nq = repeated ? null : candidate;
       final verdict = a.quizResult;
       if (inQuiz && replyTo != null && verdict != null && verdict.questionId == replyTo) {
@@ -266,11 +309,20 @@ class ChatController extends ChangeNotifier {
       }
       var text = sanitizeAiText(a.answer, (id) => names[id], sourceName: (n) => n >= 1 && n <= cands.length ? names[cands[n - 1].id] : null);
       if (candidate != null) text = stripNextQuestionTail(text); // the card shows it
+      // The answered question and the next one are on their cards: never repeat them in prose.
+      if (inQuiz) {
+        text = stripRepeatedQuestions(text, [
+          ?candidate?.text,
+          for (final m in c.messages)
+            if (m.quizQuestion != null) m.quizQuestion!.text,
+        ]);
+      }
       // A fresh quiz is only the question + its options, not a second prose copy.
       if (candidate != null && a.quizResult == null) text = '';
       if (repeated && text.isEmpty) text = 'यह प्रश्न पहले पूछा जा चुका है। नया प्रश्न चुनें।';
-      if (text.isEmpty && nq == null) text = kEmptyAnswer;
-      if (text.isNotEmpty) {
+      final verdictOnly = inQuiz && a.quizResult != null; // the ✓/✗ chip still shows
+      if (text.isEmpty && nq == null && !verdictOnly) text = kEmptyAnswer;
+      if (text.isNotEmpty || verdictOnly) {
         c.messages.add(
         ChatMsg(
           role: 'assistant',
@@ -291,7 +343,7 @@ class ChatController extends ChangeNotifier {
       }
       c.updated = now;
       sending = false;
-      offer = aiCannotAnswer(answer: text, cited: a.cited, isPraman: (id) => Retriever.I.praman(id) != null, notFound: a.offerAdmin)
+      offer = !(verdictOnly && text.isEmpty) && aiCannotAnswer(answer: text, cited: a.cited, isPraman: (id) => Retriever.I.praman(id) != null, notFound: a.offerAdmin)
           ? AdminOffer(c.id, question, reason: a.found == false ? (a.reason ?? 'no_source') : null)
           : null;
       if (a.found == false) Analytics.I.aiFailed(question, a.reason ?? 'no_source');

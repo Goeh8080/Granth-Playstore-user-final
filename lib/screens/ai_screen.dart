@@ -148,6 +148,8 @@ class _AiPanelState extends State<AiPanel> {
       builder: (context, _) {
         final msgs = c.messages;
         final lastAi = msgs.lastIndexWhere((m) => !m.isUser && !m.isAdmin);
+        // ज्ञान चर्चा: a question repeated in later messages is shown once.
+        final shown = visibleChatIndexes(msgs, activeId: c.quiz?.convId == c.current?.id ? c.quiz?.q.id : null);
         return SliverMainAxisGroup(
           slivers: [
             SliverToBoxAdapter(
@@ -206,8 +208,9 @@ class _AiPanelState extends State<AiPanel> {
               )
             else
               SliverList.builder(
-                itemCount: msgs.length,
-                itemBuilder: (context, i) {
+                itemCount: shown.length,
+                itemBuilder: (context, k) {
+                  final i = shown[k];
                   final m = msgs[i];
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 14),
@@ -520,6 +523,13 @@ class _AnswerBubbleState extends State<AnswerBubble> {
     }
   }
 
+  /// A fresh verdict explains itself after the options are colored; the next question comes last.
+  Widget _maybeReveal(Widget card) => msg.quizResult != null && msg.quizQuestion == null
+      ? QuizReveal(at: msg.at, child: card)
+      : msg.quizQuestion != null && msg.quizResult == null
+      ? QuizReveal(at: msg.at, late: true, child: card)
+      : card;
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(listenable:AiV2Flow.I,builder:(context,_)=>_answer(context));
   Widget _answer(BuildContext context) {
@@ -532,7 +542,7 @@ class _AnswerBubbleState extends State<AnswerBubble> {
         Expanded(
           child: RepaintBoundary(
             key: _card,
-            child: GCard(
+            child: _maybeReveal(GCard(
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -600,7 +610,7 @@ class _AnswerBubbleState extends State<AnswerBubble> {
                   ),
                 ],
               ),
-            ),
+            )),
           ),
         ),
       ],
@@ -1329,25 +1339,89 @@ class QuizResultChip extends StatelessWidget {
 }
 
 /// Verdicts come only from the worker after submit; never guess a correct option.
+///
+/// Card-style options (the earlier ज्ञान चर्चा look: white card, gold border, bold maroon text,
+/// like [SheetButton]). After the worker's verdict: a right pick turns green; a wrong pick turns
+/// every wrong option red and the right one green (when the worker names it).
 class QuizOptions extends StatelessWidget {
   const QuizOptions({super.key, required this.question, this.selected, this.result, this.onAnswer});
   final QuizQuestion question;
   final String? selected;
   final QuizResult? result;
   final void Function(String)? onAnswer;
+
+  static const kGreenBg = Color(0xFFE3F4E6), kGreen = Color(0xFF1E6B34), kGreenLine = Color(0xFF3C9A5A);
+  static const kRedBg = Color(0xFFFBE4E1), kRed = Color(0xFF9A2A1F), kRedLine = Color(0xFFD0574A);
+
   @override
-  Widget build(BuildContext context) => Column(key: const ValueKey('quiz-options'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-    for (final (i, option) in question.options.indexed)
-      Padding(padding: const EdgeInsets.only(bottom: 8), child: Semantics(
-        button: true, selected: selected == option,
-        child: Pressable(key: ValueKey('quiz-opt-$i'), onTap: result == null && onAnswer != null ? () => onAnswer!(option) : null,
-          child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), color: result?.correct == true
-              ? (selected == option ? const Color(0xFFE3F4E6) : const Color(0xFFFBE4E1))
-              : result?.correct == false && selected == option ? const Color(0xFFFBE4E1) : GColors.cream),
-            child: Text('${selected == option && result?.correct != null ? (result!.correct! ? '✓ ' : '✗ ') : ''}$option', style: GText.sans(size: 15, height: 1.5)),
-          ),
-        ),
-      )),
-  ]);
+  Widget build(BuildContext context) {
+    final r = result;
+    final opts = question.options;
+    final sel = r?.selectedIndexIn(opts, selected) ?? (selected == null ? null : opts.indexOf(selected!));
+    final right = r?.correctIndexIn(opts, selected: selected);
+    final active = r == null && onAnswer != null;
+    return Column(key: const ValueKey('quiz-options'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      for (final (i, option) in opts.indexed)
+        Padding(padding: const EdgeInsets.only(bottom: 8), child: Builder(builder: (context) {
+          // 'right' | 'wrong' | 'picked' (no verdict) | null (plain card)
+          final tone = r == null || r.correct == null
+              ? (r != null && sel == i ? 'picked' : null)
+              : i == right
+              ? 'right'
+              : r.correct == false && (right != null || sel == i)
+              ? 'wrong'
+              : null;
+          final (bg, line, fg) = switch (tone) {
+            'right' => (kGreenBg, kGreenLine, kGreen),
+            'wrong' => (kRedBg, kRedLine, kRed),
+            'picked' => (GColors.cream, GColors.gold, GColors.maroon),
+            _ => (Colors.white, GColors.gold, GColors.maroon),
+          };
+          final mark = tone == 'right' ? '✓ ' : tone == 'wrong' && sel == i ? '✗ ' : '';
+          return Semantics(
+            button: true, selected: sel == i,
+            child: Pressable(key: ValueKey('quiz-opt-$i'), onTap: active ? () => onAnswer!(option) : null,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 160),
+                opacity: r == null && onAnswer == null ? 0.6 : (r != null && tone == null ? 0.75 : 1),
+                child: AnimatedContainer(
+                  key: ValueKey('quiz-opt-card-$i-${tone ?? 'plain'}'),
+                  duration: const Duration(milliseconds: 180),
+                  constraints: const BoxConstraints(minHeight: 52),
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: line, width: tone == 'right' || tone == 'wrong' ? 1.5 : 1),
+                  ),
+                  child: Text('$mark$option', textAlign: TextAlign.center, style: GText.sans(size: 16, weight: FontWeight.w700, color: fg, height: 1.4)),
+                ),
+              ),
+            ),
+          );
+        })),
+    ]);
+  }
+}
+
+/// ज्ञान चर्चा: a fresh verdict's explanation (and the next question) fade in only after the
+/// tapped option has turned green/red. Older messages (history) show at once.
+class QuizReveal extends StatelessWidget {
+  const QuizReveal({super.key, required this.child, required this.at, this.late = false});
+  final Widget child;
+  final int at;
+  final bool late;
+  @override
+  Widget build(BuildContext context) {
+    if (DateTime.now().millisecondsSinceEpoch - at > 4000) return child;
+    return TweenAnimationBuilder<double>(
+      key: const ValueKey('quiz-reveal'),
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: late ? 1100 : 750),
+      curve: Interval(late ? 0.6 : 0.45, 1, curve: Curves.easeOut),
+      builder: (context, v, child) => Opacity(opacity: v, child: Transform.translate(offset: Offset(0, 8 * (1 - v)), child: child)),
+      child: child,
+    );
+  }
 }

@@ -7,6 +7,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../config.dart';
+import '../services/analytics.dart';
+import '../services/firebase_bridge.dart';
 import '../services/remote_config.dart';
 import 'retriever.dart';
 
@@ -90,19 +92,59 @@ class QuizQuestion {
   }
 }
 
-/// Tatv AI `quiz_result: {question_id, correct: true|false|null, feedback}`.
+/// Tatv AI `quiz_result: {question_id, correct: true|false|null, feedback}`, plus the additive
+/// coloring fields `correct_index` (0-based), `correct_option` and `selected_index` (w11).
 class QuizResult {
-  const QuizResult({required this.questionId, this.correct, this.feedback = ''});
+  const QuizResult({required this.questionId, this.correct, this.feedback = '', this.correctIndex, this.correctOption, this.selectedIndex});
   final String questionId;
   final bool? correct;
   final String feedback;
+  final int? correctIndex, selectedIndex;
+  final String? correctOption;
   static QuizResult? fromJson(Object? j) {
     if (j is! Map || j['question_id'] == null) return null;
     final c = j['correct'];
-    return QuizResult(questionId: '${j['question_id']}', correct: c is bool ? c : null, feedback: j['feedback'] is String ? (j['feedback'] as String).trim() : '');
+    int? idx(Object? v) {
+      final n = v is num ? v.toInt() : (v is String ? int.tryParse(v.trim()) : null);
+      return n != null && n >= 0 && n < 6 ? n : null;
+    }
+    final co = j['correct_option'];
+    return QuizResult(
+      questionId: '${j['question_id']}',
+      correct: c is bool ? c : null,
+      feedback: j['feedback'] is String ? (j['feedback'] as String).trim() : '',
+      correctIndex: idx(j['correct_index']),
+      correctOption: co is String && co.trim().isNotEmpty ? co.trim() : null,
+      selectedIndex: idx(j['selected_index']),
+    );
   }
 
-  Map<String, Object?> toJson() => {'question_id': questionId, 'correct': correct, 'feedback': feedback};
+  /// Index of the right option in [options], or null when the worker did not say (older worker).
+  int? correctIndexIn(List<String> options, {String? selected}) {
+    final byText = correctOption == null ? -1 : options.indexWhere((o) => o.trim() == correctOption);
+    final ci = correctIndex;
+    if (ci != null && ci < options.length && (correctOption == null || byText < 0 || byText == ci)) return ci;
+    if (byText >= 0) return byText;
+    return correct == true ? selectedIndexIn(options, selected) : null;
+  }
+
+  /// Index of the option the user picked: its text first, else the worker's `selected_index`.
+  int? selectedIndexIn(List<String> options, String? selected) {
+    final s = selected?.trim();
+    final i = s == null ? -1 : options.indexWhere((o) => o.trim() == s);
+    if (i >= 0) return i;
+    final si = selectedIndex;
+    return si != null && si < options.length ? si : null;
+  }
+
+  Map<String, Object?> toJson() => {
+    'question_id': questionId,
+    'correct': correct,
+    'feedback': feedback,
+    'correct_index': ?correctIndex,
+    'correct_option': ?correctOption,
+    'selected_index': ?selectedIndex,
+  };
 }
 
 /// One SRJM book citation under an answer.
@@ -208,7 +250,9 @@ String _cut(String s, int max) {
 }
 
 /// The JSON body of `POST /ask`, with every limit of the contract applied.
-Map<String, Object> buildAskBody(String question, List<AiTurn> history, List<Candidate> candidates, {String? mode, String? quizReplyTo}) {
+/// `iid` (32 lower-case hex install id) and `uid` (Firebase uid, signed in only) are additive and
+/// validated like the presence body: an invalid value is left out, never sent.
+Map<String, Object> buildAskBody(String question, List<AiTurn> history, List<Candidate> candidates, {String? mode, String? quizReplyTo, String? iid, String? uid}) {
   final turns = history.where((t) => t.text.trim().isNotEmpty && (t.role == 'user' || t.role == 'assistant')).toList();
   final last = turns.length > kHistoryTurns ? turns.sublist(turns.length - kHistoryTurns) : turns;
   return {
@@ -217,8 +261,14 @@ Map<String, Object> buildAskBody(String question, List<AiTurn> history, List<Can
     'candidates': [for (final c in candidates.take(kCandidatesMax)) c.toJson()],
     'mode': ?mode,
     if (quizReplyTo != null) 'quiz_reply_to': {'question_id': quizReplyTo},
+    if (iid != null && kIidPattern.hasMatch(iid)) 'iid': iid,
+    if (uid != null && kUidPattern.hasMatch(uid)) 'uid': uid,
   };
 }
+
+/// Same checks as `Presence.body()`.
+final kIidPattern = RegExp(r'^[0-9a-f]{32}$');
+final kUidPattern = RegExp(r'^[A-Za-z0-9_-]{1,128}$');
 
 /// Praman ids from the `cited` field: numbers or numeric strings, no repeats, no junk.
 List<int> parseCited(Object? raw) {
@@ -282,8 +332,20 @@ AiAnswer parseAskResponse(int status, String body) {
 }
 
 class AiClient {
-  AiClient({String? endpoint, this.timeout = const Duration(seconds: 45), this.backoff = const Duration(milliseconds: 1500), this.header = kAiClientHeader})
-    : endpoint = (endpoint ?? RemoteConfig.I.aiEndpoint ?? kAiEndpoint).replaceAll(RegExp(r'/+$'), '');
+  AiClient({String? endpoint, this.timeout = const Duration(seconds: 45), this.backoff = const Duration(milliseconds: 1500), this.header = kAiClientHeader, String? Function()? iid, String? Function()? uid})
+    : endpoint = (endpoint ?? RemoteConfig.I.aiEndpoint ?? kAiEndpoint).replaceAll(RegExp(r'/+$'), ''),
+      _iid = iid ?? (() => Analytics.I.iid),
+      _uid = uid ?? (() => FirebaseBridge.I.uid);
+
+  /// Stable install id and the signed-in uid (injectable for tests). Never throw into [ask].
+  final String? Function() _iid, _uid;
+  String? _safe(String? Function() f) {
+    try {
+      return f();
+    } catch (_) {
+      return null;
+    }
+  }
 
   final String endpoint;
   final Duration timeout;
@@ -296,7 +358,7 @@ class AiClient {
 
   /// Asks once; on a timeout, a network error, a 429 or a 5xx it waits a little and asks once more.
   Future<AiAnswer> ask(String question, List<AiTurn> history, List<Candidate> candidates) async {
-    final body = jsonEncode(buildAskBody(question, history, candidates, mode: mode, quizReplyTo: quizReplyTo));
+    final body = jsonEncode(buildAskBody(question, history, candidates, mode: mode, quizReplyTo: quizReplyTo, iid: _safe(_iid), uid: _safe(_uid)));
     try {
       return await _once(body);
     } on AiException catch (e) {

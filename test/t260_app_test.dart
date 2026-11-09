@@ -235,7 +235,7 @@ void main() {
   );
 
   testWidgets(
-    'quiz grades only after submit, correct green and all other options red at 320dp',
+    'quiz grades only after submit: a right pick is green, the other cards stay plain at 320dp',
     (t) async {
       await t.binding.setSurfaceSize(const Size(320, 700));
       addTearDown(() => t.binding.setSurfaceSize(null));
@@ -277,7 +277,7 @@ void main() {
                   const Color(0xFFFBE4E1),
             )
             .length,
-        3,
+        0,
       );
       expect(t.takeException(), isNull);
     },

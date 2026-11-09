@@ -330,6 +330,7 @@ class FirebaseBridge extends ChangeNotifier {
     error = null;
     stage = null;
     await Store.I.remove(Store.kLoginSeen); // the login gate shows again
+    await Store.I.remove(Store.kGranthView); // folders/list asked once again after the next login
     await _setAccount(null);
     Presence.I.afterSignOut();
   }
@@ -406,6 +407,7 @@ class FirebaseBridge extends ChangeNotifier {
       busy = false;
       stage = null;
       await Store.I.remove(Store.kLoginSeen);
+      await Store.I.remove(Store.kGranthView);
       await _setAccount(null);
       return null;
     } on GoogleSignInException catch (e) {

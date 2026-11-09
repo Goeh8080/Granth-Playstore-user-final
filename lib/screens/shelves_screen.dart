@@ -344,7 +344,7 @@ class _FolderScreenState extends State<_FolderScreen> with LivePanel {
 }
 
 
-const granthViewKey = 'granth-view-mode';
+const granthViewKey = Store.kGranthView;
 
 /// Real bundled previews (2× captures, 780 px wide): the COMPLETE folder screen and the 3×3 list.
 const double _kFoldersAspect = 780 / 1880;
@@ -371,11 +371,25 @@ class _RootGranthsState extends State<_RootGranths> {
   void initState() {
     super.initState();
     RemoteConfig.I.addListener(_cfg);
-    if (_needsChoice) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _needsChoice) _choose();
-      });
+    // A slow phone may open the saved settings a moment late: decide only once they are
+    // there, so a choice made earlier is never asked again.
+    if (Store.I.persistent) {
+      _schedule();
+    } else {
+      Store.I.adopted.addListener(_prefsReady);
     }
+  }
+
+  void _prefsReady() {
+    Store.I.adopted.removeListener(_prefsReady);
+    if (mounted) setState(_schedule);
+  }
+
+  void _schedule() {
+    if (!_needsChoice) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _needsChoice && !_asking) _choose();
+    });
   }
 
   bool get _needsChoice => RemoteConfig.I.uiGranthViewMode == null && Store.I.getString(granthViewKey) == null;
@@ -383,19 +397,21 @@ class _RootGranthsState extends State<_RootGranths> {
   void _cfg() {
     if (!mounted) return;
     // Admin forced a view while the chooser is open: close it, the forced view applies.
-    if (_asking && RemoteConfig.I.uiGranthViewMode != null) Navigator.of(context).maybePop();
+    if (_asking && RemoteConfig.I.uiGranthViewMode != null) Navigator.of(context, rootNavigator: true).pop();
     setState(() {});
   }
 
   @override
   void dispose() {
     RemoteConfig.I.removeListener(_cfg);
+    Store.I.adopted.removeListener(_prefsReady);
     super.dispose();
   }
 
   Future<void> _choose() async {
     _asking = true;
-    final mode = await showPop<String>(context, (_) => const GranthViewChoice(), barrierOpacity: 0.55);
+    // Must pick one (no Back / outside tap), so the question is asked only once.
+    final mode = await showPop<String>(context, (_) => const PopScope(canPop: false, child: GranthViewChoice()), dismissible: false, barrierOpacity: 0.55);
     _asking = false;
     if (mode == null || !mounted) return;
     await Store.I.setString(granthViewKey, mode);

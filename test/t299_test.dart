@@ -73,6 +73,28 @@ void main() {
       await boot(t);
       expect(find.byKey(const ValueKey('granth-view-picker')), findsOneWidget);
     });
+
+    testWidgets('chooser cannot be dismissed without a pick; pick is saved and not asked again', (t) async {
+      await boot(t);
+      expect(find.byKey(const ValueKey('granth-view-picker')), findsOneWidget);
+      await t.tapAt(const Offset(4, 4)); // outside the card
+      await t.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const ValueKey('granth-view-picker')), findsOneWidget, reason: 'outside tap does not close it');
+      await t.binding.handlePopRoute(); // Android Back
+      await t.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const ValueKey('granth-view-picker')), findsOneWidget, reason: 'Back does not close it');
+      await t.tap(find.byKey(const ValueKey('granth-view-list')));
+      await t.pump(const Duration(milliseconds: 400));
+      expect(Store.I.getString(granthViewKey), 'list');
+      await t.pumpWidget(const SizedBox());
+      await boot(t);
+      expect(find.byKey(const ValueKey('granth-view-picker')), findsNothing, reason: 'asked only once');
+    });
+
+    test('logout key: the saved choice uses the shared Store key', () {
+      expect(granthViewKey, Store.kGranthView);
+      expect(granthViewKey, 'granth-view-mode', reason: 'old installs keep their saved choice');
+    });
   });
 
   testWidgets('chooser text follows the theme (primary + text theme), previews show full width', (t) async {

@@ -37,6 +37,9 @@ class Store {
   static const kTheme = 'granth-theme';
   static const kLoginSeen = 'granth-login-seen';
 
+  /// Granth root view chosen once (folders / list); cleared on logout so it is asked once again.
+  static const kGranthView = 'granth-view-mode';
+
   // Extra settings (not in the web app). Stored as text like the others.
   static const kTextSize = 'granth-text-size';
   static const kWifiOnly = 'granth-wifi-only';

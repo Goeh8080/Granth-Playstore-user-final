@@ -131,7 +131,7 @@ jobs:
           # 1) Signed with the Satlok key
           jarsigner -verify "$AAB" | grep -q "jar verified" || fail "AAB jarsigner -verify failed"
           echo "jarsigner: jar verified"
-          keytool -printcert -jarfile "$AAB" | tr -d ':' | tr 'A-F' 'a-f' | grep -q "sha256 $EXPECTED_SHA256" \
+          keytool -printcert -jarfile "$AAB" | tr -d ':' | tr 'A-Z' 'a-z' | grep -q "sha256 $EXPECTED_SHA256" \
             || fail "AAB certificate SHA-256 mismatch"
           echo "AAB cert SHA-256 matches $EXPECTED_SHA256"
           # Merged manifest via bundletool

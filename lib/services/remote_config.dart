@@ -75,7 +75,7 @@ class ParsedConfig {
     this.uiGridForce = const {},
     this.uiTaskbar = TaskbarRule.none,
     this.uiTerms = TermsInfo.fallback,
-    this.uiLoginRequired = true,
+    this.uiLoginRequired = false,
     this.uiGranthViewMode,
     this.navigatorEnabled = false,
     this.appUpdate,
@@ -113,7 +113,8 @@ class ParsedConfig {
   /// `ui.terms {url, version}` (round-3; see [parseTerms]).
   final TermsInfo uiTerms;
 
-  /// `ui.login_required` (§21): Google login is compulsory unless the admin sets exactly `false`.
+  /// `ui.login_required` (§21, owner Nov 2026): login is OPTIONAL by default; compulsory only when
+  /// the admin sets exactly `true`. Old configs without the key → optional.
   final bool uiLoginRequired;
 
   /// `ui.granth_view_mode` (t301): `folders` / `list` forces the root Granth view for every
@@ -405,7 +406,7 @@ ParsedConfig? parseConfig(String text, {int cachedVersion = 0, int appBuild = kB
       uiGridForce: parseGridForce(_map(j['ui'])),
       uiTaskbar: parseTaskbar(_map(j['ui'])),
       uiTerms: parseTerms(_map(j['ui'])),
-      uiLoginRequired: _map(j['ui'])?['login_required'] != false,
+      uiLoginRequired: _map(j['ui'])?['login_required'] == true,
       uiGranthViewMode: parseGranthViewMode(_map(j['ui'])),
       navigatorEnabled: parseNavigatorEnabled(_map(j['ui']), f),
       appUpdate: parseAppUpdate(j['appUpdate'] ?? j['app_update']),
@@ -575,7 +576,7 @@ class RemoteConfig extends ChangeNotifier {
 
   /// `ui.terms` (see [parseTerms]).
   TermsInfo uiTerms = TermsInfo.fallback;
-  bool uiLoginRequired = true;
+  bool uiLoginRequired = false;
 
   /// Admin-forced root Granth view (`folders` / `list`), or null = the user's own once-only choice.
   String? uiGranthViewMode;
@@ -758,7 +759,7 @@ class RemoteConfig extends ChangeNotifier {
     uiGridForce = const {};
     uiTaskbar = TaskbarRule.none;
     uiTerms = TermsInfo.fallback;
-    uiLoginRequired = true;
+    uiLoginRequired = false;
     uiGranthViewMode = null;
     navigatorEnabled = false;
     appUpdate = null;

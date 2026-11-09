@@ -59,6 +59,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="granthprabandhan.pages.dev" android:pathPrefix="/open" />
                 <data android:scheme="https" android:host="granth.grok.me" android:pathPrefix="/open" />
             </intent-filter>
         </activity>

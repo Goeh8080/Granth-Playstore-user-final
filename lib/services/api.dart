@@ -6,7 +6,11 @@ import 'package:flutter/foundation.dart';
 import '../models/models.dart';
 
 const kOrigin = 'https://granth.wnmsolutions.com';
-const kShareBase = 'https://granth.grok.me/open';
+/// Share links (Nov 2026: own domain). Old granth.grok.me links still open (router + manifest).
+const kShareBase = 'https://granthprabandhan.pages.dev/open';
+
+/// Hosts whose `/open` links the app opens (new first, old kept for links already shared).
+const kShareHosts = {'granthprabandhan.pages.dev', 'granth.grok.me'};
 
 /// Store page of this app (Settings → ऐप शेयर करें).
 /// Android application id (t305 rename; was com.wnm.granthprabandhan).

@@ -28,7 +28,7 @@ class _VideoBlockState extends State<VideoBlock> {
     final c = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF000000))
-      ..loadHtmlString(html, baseUrl: 'https://granth.grok.me/');
+      ..loadHtmlString(html, baseUrl: 'https://granthprabandhan.pages.dev/');
     setState(() => _c = c);
   }
 

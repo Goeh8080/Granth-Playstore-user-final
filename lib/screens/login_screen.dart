@@ -1,6 +1,6 @@
 /// Round 15: the first-launch login page. Shown once before the dashboard to anyone not signed
-/// in. T184/§21: login is compulsory (also for users who skipped before) unless the admin sets
-/// `ui.login_required:false`; only then "बाद में" appears and skips it. Back here is
+/// in. Login is optional by default ("बाद में" skips it, remembered); only when the admin sets
+/// `ui.login_required:true` is it compulsory (also for users who skipped before). Back here is
 /// Back on the app's first screen, so it leaves the app.
 library;
 
@@ -27,7 +27,7 @@ class LoginGate extends StatefulWidget {
 
   static bool get seen => Store.I.getString(Store.kLoginSeen) == '1';
 
-  /// §21: `ui.login_required` true or missing → compulsory.
+  /// §21: compulsory only when `ui.login_required` is exactly true; missing → optional.
   static bool get required => RemoteConfig.I.uiLoginRequired;
   static void markSeen() => Store.I.setString(Store.kLoginSeen, '1');
 

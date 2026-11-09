@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:granthprabandhan/services/api.dart' show shareLink;
 import 'package:granthprabandhan/main.dart';
 import 'package:granthprabandhan/screens/home_shell.dart';
 import 'package:granthprabandhan/screens/topics_screen.dart';
@@ -91,6 +92,12 @@ void main() {
       expect(hashFromLink(Uri.parse('https://granth.grok.me/open?granth=7')), '#/pramans?granth=7');
       expect(hashFromLink(Uri.parse('https://granth.grok.me/open?id=100')), '#/pramans?id=100');
       expect(hashFromLink(Uri.parse('https://granth.grok.me/elsewhere?id=1')), isNull);
+      expect(hashFromLink(Uri.parse('https://granthprabandhan.pages.dev/open?id=100')), '#/pramans?id=100');
+      expect(hashFromLink(Uri.parse('https://granthprabandhan.pages.dev/open?topic=3')), '#/pramans?topic=3');
+      expect(hashFromLink(Uri.parse('https://granthprabandhan.pages.dev/open?granth=7')), '#/pramans?granth=7');
+      expect(hashFromLink(Uri.parse('https://granthprabandhan.pages.dev/x?id=1')), isNull);
+      expect(hashFromLink(Uri.parse('https://evil.pages.dev/open?id=1')), isNull);
+      expect(shareLink('praman', '100'), 'https://granthprabandhan.pages.dev/open?id=100');
     });
   });
 

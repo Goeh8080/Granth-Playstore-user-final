@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../services/api.dart' show kShareHosts;
 import '../services/events.dart';
 import '../services/storage.dart';
 
@@ -287,9 +288,10 @@ class AppNav extends ChangeNotifier {
   }
 }
 
-/// Deep link → hash (`granth://open?topic=…`, `https://granth.grok.me/open?id=…`).
+/// Deep link → hash (`granth://open?topic=…`, `https://granthprabandhan.pages.dev/open?id=…`;
+/// old `https://granth.grok.me/open?…` links keep working).
 String? hashFromLink(Uri u) {
-  final ok = (u.scheme == 'granth') || ((u.scheme == 'https' || u.scheme == 'http') && u.host == 'granth.grok.me' && u.path.startsWith('/open'));
+  final ok = (u.scheme == 'granth') || ((u.scheme == 'https' || u.scheme == 'http') && kShareHosts.contains(u.host) && u.path.startsWith('/open'));
   if (!ok) return null;
   final q = u.queryParameters;
   if ((q['topic'] ?? '').isNotEmpty) return '#/pramans?topic=${q['topic']}';

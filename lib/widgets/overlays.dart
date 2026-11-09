@@ -25,13 +25,13 @@ class _FocusRoute<T> extends RawDialogRoute<T> {
 
 /// [blurFocus]: the card comes in out of a 12 px blur (`ImageFiltered` + `Opacity`, 520 ms) instead of
 /// the 0.28 s rise; falls back to the plain rise with "एनिमेशन: कम" / the phone's no-animation.
-Future<T?> showPop<T>(BuildContext context, WidgetBuilder builder, {bool dismissible = true, bool blurFocus = false}) {
+Future<T?> showPop<T>(BuildContext context, WidgetBuilder builder, {bool dismissible = true, bool blurFocus = false, double barrierOpacity = 0.28}) {
   Widget page(BuildContext ctx, Animation<double> a, Animation<double> b) => SafeArea(
         child: Center(
           child: Padding(padding: const EdgeInsets.all(16), child: Material(type: MaterialType.transparency, child: builder(ctx))),
         ),
       );
-  final scrim = GColors.brown.withValues(alpha: 0.28);
+  final scrim = GColors.brown.withValues(alpha: barrierOpacity.clamp(0.0, 1.0));
   if (blurFocus && Motion.on(context)) {
     return Navigator.of(context, rootNavigator: true).push(_FocusRoute<T>(
       barrierDismissible: dismissible,
@@ -67,27 +67,27 @@ Future<T?> showPop<T>(BuildContext context, WidgetBuilder builder, {bool dismiss
 
 /// `.pdf-sheet`
 class SheetCard extends StatelessWidget {
-  const SheetCard({super.key, required this.children, this.maxWidth = 520, this.scroll = true});
+  const SheetCard({super.key, required this.children, this.maxWidth = 520, this.scroll = true, this.opaque = false});
   final List<Widget> children;
   final double maxWidth;
   final bool scroll;
+  /// When true, skip look theming that can make glass/translucent surfaces; solid paper card.
+  final bool opaque;
   @override
   Widget build(BuildContext context) {
     final h = MediaQuery.sizeOf(context).height;
     final body = Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
+    final base = BoxDecoration(
+      color: GColors.paper,
+      borderRadius: BorderRadius.circular(18),
+      boxShadow: [BoxShadow(color: GColors.shadow(0.28), blurRadius: 40, offset: const Offset(0, 16))],
+    );
     return ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxWidth, maxHeight: (h * 0.86).clamp(0, 720)),
       child: LookBuilder(
         builder: (context, look) => Container(
           padding: const EdgeInsets.all(16),
-          decoration: themedSurface(
-            BoxDecoration(
-              color: GColors.paper,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [BoxShadow(color: GColors.shadow(0.28), blurRadius: 40, offset: const Offset(0, 16))],
-            ),
-            look: look,
-          ),
+          decoration: opaque ? base : themedSurface(base, look: look),
           child: scroll ? SingleChildScrollView(child: body) : body,
         ),
       ),

@@ -80,9 +80,11 @@ void main() {
         );
       }
     });
-    // Looping preview tickers: never pumpAndSettle while the chooser is open.
+    // Looping preview tickers never idle; advance past showPop's 280ms entry fade/rise
+    // so the sheet is fully opaque before assertions or PREVIEW_DIR captures.
     await t.pump();
-    await t.pump(const Duration(milliseconds: 50));
+    await t.pump(const Duration(milliseconds: 300));
+    await t.pump(const Duration(milliseconds: 16));
   }
 
   Future<void> proof(WidgetTester t, String name) async {
@@ -204,6 +206,36 @@ void main() {
         frame.image.dispose();
         codec!.dispose();
       }
+      expect(t.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'settled chooser sheet is opaque with a dim barrier and no entry fade left',
+    (t) async {
+      await boot(t, '#/granths');
+      expect(find.byKey(const ValueKey('granth-view-picker')), findsOneWidget);
+      final barriers = t.widgetList<ModalBarrier>(find.byType(ModalBarrier)).toList();
+      expect(barriers, isNotEmpty);
+      final dim = barriers.map((b) => b.color).whereType<Color>().toList();
+      expect(dim, isNotEmpty);
+      expect(dim.first.a, greaterThan(0.45), reason: 'chooser needs a proper dim scrim');
+      // Entry FadeTransition must be finished (opacity 1); sheet surface is opaque paper.
+      final fades = t.widgetList<FadeTransition>(
+        find.descendant(
+          of: find.byType(Overlay),
+          matching: find.byType(FadeTransition),
+        ),
+      );
+      for (final f in fades) {
+        expect(f.opacity.value, closeTo(1.0, 0.02));
+      }
+      final paper = t.getRect(find.byKey(const ValueKey('granth-view-picker')));
+      expect(paper.top, greaterThan(40));
+      expect(paper.bottom, lessThan(640));
+      expect(paper.left, greaterThanOrEqualTo(0));
+      expect(paper.right, lessThanOrEqualTo(320));
+      await proof(t, 'granth-choice-settled-opaque-320dp.png');
       expect(t.takeException(), isNull);
     },
   );

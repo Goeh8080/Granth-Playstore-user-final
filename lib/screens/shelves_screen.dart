@@ -356,7 +356,7 @@ class _RootGranthsState extends State<_RootGranths> {
   }
 
   Future<void> _choose() async {
-    final mode = await showPop<String>(context, (_) => const GranthViewChoice());
+    final mode = await showPop<String>(context, (_) => const GranthViewChoice(), barrierOpacity: 0.55);
     if (mode == null || !mounted) return;
     await Store.I.setString(granthViewKey, mode);
     if (mounted) setState(() {});
@@ -381,7 +381,8 @@ class GranthViewChoice extends StatelessWidget {
     final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
     final h = MediaQuery.sizeOf(context).height;
     if (large) return (h * .10).clamp(40.0, 64.0);
-    return (h * .18 / (scale > 1.3 ? scale / 1.3 : 1)).clamp(56.0, 132.0);
+    // Tall enough at 320dp to read the real screenshots; still fits without dialog scroll.
+    return (h * .22 / (scale > 1.3 ? scale / 1.3 : 1)).clamp(72.0, 156.0);
   }
 
   Widget _option(BuildContext context, String mode, String title, String hint, bool large, double imageHeight) {
@@ -421,7 +422,7 @@ class GranthViewChoice extends StatelessWidget {
   Widget build(BuildContext context) {
     final large = MediaQuery.textScalerOf(context).scale(16) > 24;
     final imageHeight = _previewHeight(context, large: large);
-    return SheetCard(key: const ValueKey('granth-view-picker'), scroll: false, children: [
+    return SheetCard(key: const ValueKey('granth-view-picker'), scroll: false, opaque: true, children: [
       Row(children: [
         Expanded(
           child: Text(

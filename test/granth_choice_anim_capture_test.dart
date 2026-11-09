@@ -75,8 +75,10 @@ void main() {
         );
       }
     });
+    // Wait out showPop's 280ms fade+rise so the sheet and scrim are fully settled.
     await t.pump();
-    await t.pump(const Duration(milliseconds: 50));
+    await t.pump(const Duration(milliseconds: 300));
+    await t.pump(const Duration(milliseconds: 16));
     expect(find.byKey(const ValueKey('granth-view-picker')), findsOneWidget);
 
     Directory(dir).createSync(recursive: true);
@@ -98,8 +100,10 @@ void main() {
     }
 
     await shot('$dir/granth-choice-anim-still-320dp.png');
+    await shot('$dir/granth-choice-320dp.png');
+    await shot('$dir/granth-choice-side-by-side-320dp-1.3.png');
 
-    // ~3.2s of motion at 10 fps → 32 frames for gif/mp4 assembly.
+    // Capture only after entry settled; ~3.2s of preview scroll at 10 fps.
     for (var i = 0; i < 32; i++) {
       await t.pump(const Duration(milliseconds: 100));
       await shot('${framesDir.path}/frame_${i.toString().padLeft(3, '0')}.png');

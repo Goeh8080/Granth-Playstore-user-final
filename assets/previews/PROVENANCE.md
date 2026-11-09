@@ -22,3 +22,6 @@ Compact chooser adapts image height/copy, not system text scale. Same-frame visi
 
 ## Looping scroll previews + once-only choice (9Nov2026)
 The chooser pans each real screenshot strip with a lightweight in-app `AnimationController` (no video package). Controllers dispose when the sheet closes. Reduce-motion / एनिमेशन कम keeps a static top crop. Selection is once-only and final: the user-facing "दृश्य बदलें" control is removed; users who already saved a mode keep it and are never re-prompted. Admin-forced grid layout via remote config is unchanged and still takes precedence over the user's column preference.
+
+## Settled opaque capture (9Nov2026)
+Chooser uses an opaque paper `SheetCard` (look theming skipped) and a 0.55 brown scrim. Preview/GIF captures pump past the 280ms showPop entry fade before any frame is written, so the settled dialog is fully opaque with a proper dim barrier.

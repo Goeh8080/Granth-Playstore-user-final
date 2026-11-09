@@ -22,7 +22,7 @@ import 'offline_test.dart' show FakeNet, pictureCatalog;
 import 'round3_test.dart' show FakeApi;
 import 'round5_test.dart' show fingerTap, openApp, openFolder, openSettings, realPause;
 
-const _native = MethodChannel('com.wnm.granthprabandhan/downloads');
+const _native = MethodChannel('com.granth.app/downloads');
 const _share = MethodChannel('dev.fluttercommunity.plus/share');
 
 double scaleAt(WidgetTester t, Finder f) => MediaQuery.textScalerOf(t.element(f)).scale(10);
@@ -39,7 +39,7 @@ void main() {
     UiPrefs.I.refresh();
     native = [];
     shared = [];
-    PackageInfo.setMockInitialValues(appName: 'ग्रंथ प्रबंधन', packageName: 'com.wnm.granthprabandhan', version: '1.0.0', buildNumber: '1', buildSignature: '');
+    PackageInfo.setMockInitialValues(appName: 'ग्रंथ प्रबंधन', packageName: 'com.granth.app', version: '1.0.0', buildNumber: '1', buildSignature: '');
     final m = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     m.setMockMethodCallHandler(_native, (c) async {
       native.add(c);

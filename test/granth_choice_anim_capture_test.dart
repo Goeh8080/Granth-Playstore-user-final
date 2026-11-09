@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:granthprabandhan/screens/shelves_screen.dart';
 import 'package:granthprabandhan/state/router.dart';
 import 'package:granthprabandhan/services/storage.dart';
+import 'package:granthprabandhan/theme/colors.dart';
 
 import 'helpers.dart';
 
@@ -29,19 +30,16 @@ void main() {
 
     await t.runAsync(() async {
       for (final entry in {
-        'NotoDeva': 'NotoSansDevanagari-Regular',
-        'DMSans': 'DMSans-Regular',
-        'YatraOne': 'YatraOne-Devanagari',
-        'YatraOneLatin': 'YatraOne-Latin',
+        'NotoDeva': ['NotoSansDevanagari-Regular', 'NotoSansDevanagari-Medium', 'NotoSansDevanagari-SemiBold'],
+        'DMSans': ['DMSans-Regular', 'DMSans-Medium', 'DMSans-SemiBold'],
+        'YatraOne': ['YatraOne-Devanagari'],
+        'YatraOneLatin': ['YatraOne-Latin'],
+        'NotoDevaFull': ['NotoSansDevanagari-Full'],
       }.entries) {
-        final loader = FontLoader(entry.key)
-          ..addFont(
-            Future.value(
-              ByteData.sublistView(
-                File('assets/fonts/${entry.value}.ttf').readAsBytesSync(),
-              ),
-            ),
-          );
+        final loader = FontLoader(entry.key);
+        for (final f in entry.value) {
+          loader.addFont(Future.value(ByteData.sublistView(File('assets/fonts/$f.ttf').readAsBytesSync())));
+        }
         await loader.load();
       }
     });
@@ -56,6 +54,7 @@ void main() {
         key: previewKey,
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
+          theme: buildTheme(),
           home: Scaffold(
             body: CustomScrollView(
               slivers: [ShelvesPanel(route: GRoute.parse('#/granths'))],
@@ -78,6 +77,11 @@ void main() {
     // Wait out showPop's 280ms fade+rise so the sheet and scrim are fully settled.
     await t.pump();
     await t.pump(const Duration(milliseconds: 300));
+    // Let the on-screen-size preview decodes finish before any frame is written.
+    for (var i = 0; i < 6; i++) {
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 60)));
+      await t.pump(const Duration(milliseconds: 16));
+    }
     await t.pump(const Duration(milliseconds: 16));
     expect(find.byKey(const ValueKey('granth-view-picker')), findsOneWidget);
 
@@ -103,8 +107,8 @@ void main() {
     await shot('$dir/granth-choice-320dp.png');
     await shot('$dir/granth-choice-side-by-side-320dp-1.3.png');
 
-    // Capture only after entry settled; ~3.2s of preview scroll at 10 fps.
-    for (var i = 0; i < 32; i++) {
+    // Capture only after entry settled; 10s (one full loop) of preview scroll at 10 fps.
+    for (var i = 0; i < 100; i++) {
       await t.pump(const Duration(milliseconds: 100));
       await shot('${framesDir.path}/frame_${i.toString().padLeft(3, '0')}.png');
     }

@@ -6,6 +6,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../config.dart';
+import 'app_update.dart' show AppUpdateInfo, parseAppUpdate;
+import 'notification_log.dart';
 import '../models/structure.dart';
 import 'catalog_store.dart';
 import 'ed25519.dart';
@@ -74,6 +76,9 @@ class ParsedConfig {
     this.uiTaskbar = TaskbarRule.none,
     this.uiTerms = TermsInfo.fallback,
     this.uiLoginRequired = true,
+    this.uiGranthViewMode,
+    this.navigatorEnabled = false,
+    this.appUpdate,
     this.trendingTopics = const [],
     this.dailyPraman,
   });
@@ -110,6 +115,17 @@ class ParsedConfig {
 
   /// `ui.login_required` (§21): Google login is compulsory unless the admin sets exactly `false`.
   final bool uiLoginRequired;
+
+  /// `ui.granth_view_mode` (t301): `folders` / `list` forces the root Granth view for every
+  /// user and skips the first-use chooser; `user_choice` or absent → null (user decides once).
+  final String? uiGranthViewMode;
+
+  /// `ui.navigator_enabled` (alias `ui.navigatorEnabled`; legacy `flags.navigator_enabled`) (t304): voice Navigator ("Hey Granth / Hey Tatv"). Off unless the
+  /// admin sets exactly `true`; even then each user must opt in (and grant the mic) in Settings.
+  final bool navigatorEnabled;
+
+  /// `app_update` (t306, optional): admin-pushed update alert; null = none.
+  final AppUpdateInfo? appUpdate;
 
   /// `trending.topic_ids` (round 14, optional): topic ids to show as "चर्चित विषय"; empty = hidden.
   final List<String> trendingTopics;
@@ -390,6 +406,9 @@ ParsedConfig? parseConfig(String text, {int cachedVersion = 0, int appBuild = kB
       uiTaskbar: parseTaskbar(_map(j['ui'])),
       uiTerms: parseTerms(_map(j['ui'])),
       uiLoginRequired: _map(j['ui'])?['login_required'] != false,
+      uiGranthViewMode: parseGranthViewMode(_map(j['ui'])),
+      navigatorEnabled: parseNavigatorEnabled(_map(j['ui']), f),
+      appUpdate: parseAppUpdate(j['appUpdate'] ?? j['app_update']),
       trendingTopics: _parseTrending(_map(j['trending'])),
       dailyPraman: _parseDaily(_map(j['daily_praman'])),
     );
@@ -558,6 +577,15 @@ class RemoteConfig extends ChangeNotifier {
   TermsInfo uiTerms = TermsInfo.fallback;
   bool uiLoginRequired = true;
 
+  /// Admin-forced root Granth view (`folders` / `list`), or null = the user's own once-only choice.
+  String? uiGranthViewMode;
+
+  /// Admin switch for the voice Navigator (default off).
+  bool navigatorEnabled = false;
+
+  /// Admin update alert (see app_update.dart).
+  AppUpdateInfo? appUpdate;
+
   /// The admin's grid for [page]: `ui.grid_pages[page]`, else `ui.grid`, else null (local default).
   int? gridFor(String page) => uiGridPages[page] ?? uiGrid;
 
@@ -679,11 +707,24 @@ class RemoteConfig extends ChangeNotifier {
     uiTaskbar = p.uiTaskbar;
     uiTerms = p.uiTerms;
     uiLoginRequired = p.uiLoginRequired;
+    uiGranthViewMode = p.uiGranthViewMode;
+    navigatorEnabled = p.navigatorEnabled;
+    appUpdate = p.appUpdate;
     uiGrid = p.uiGrid;
     uiGridPages = p.uiGridPages;
     uiGridForce = p.uiGridForce;
+    final newTrending = p.trendingTopics.isNotEmpty && !listEquals(trendingTopics, p.trendingTopics);
+    final newDaily = p.dailyPraman != null && (dailyPraman?.id != p.dailyPraman!.id || dailyPraman?.date != p.dailyPraman!.date);
     trendingTopics = p.trendingTopics;
     dailyPraman = p.dailyPraman;
+    // t303 Dashboard notifications (deduped by id, so a re-applied cached config adds nothing).
+    if (newTrending) {
+      NotificationLog.I.record(id: 'trending:${p.trendingTopics.join(',')}', kind: 'trending', title: 'चर्चित विषय', body: _topicTitles(p.trendingTopics), link: '#/pramans?topic=${Uri.encodeComponent(p.trendingTopics.first)}');
+    }
+    if (newDaily) {
+      final d = p.dailyPraman!;
+      NotificationLog.I.record(id: 'daily:${d.id}:${d.date}', kind: 'daily', title: 'आज का प्रमाण', body: _pramanTitle(d.id), link: '#/pramans?id=${Uri.encodeComponent(d.id)}');
+    }
     Shelves.useRemote(p.structure, p.overrides);
     CatalogStore.I.setHidden(p.hidden);
     if (gridChanged) UiPrefs.I.remoteChanged();
@@ -718,10 +759,57 @@ class RemoteConfig extends ChangeNotifier {
     uiTaskbar = TaskbarRule.none;
     uiTerms = TermsInfo.fallback;
     uiLoginRequired = true;
+    uiGranthViewMode = null;
+    navigatorEnabled = false;
+    appUpdate = null;
     trendingTopics = const [];
     dailyPraman = null;
     lastResult = 'none';
     _cachedBody = null;
     Shelves.useRemote(null, const {});
   }
+}
+
+
+/// `ui.navigator_enabled` (snake first, then camel `navigatorEnabled`; `flags.navigator_enabled`
+/// accepted too). On only when exactly `true`; absent → false.
+bool parseNavigatorEnabled(Map<String, dynamic>? ui, Map<String, dynamic>? flags) {
+  final v = ui?['navigator_enabled'] ?? ui?['navigatorEnabled'] ?? flags?['navigator_enabled'] ?? flags?['navigatorEnabled'];
+  return v == true;
+}
+
+/// `ui.granth_view_mode` (alias `ui.granthViewMode`): `folders` | `list` (admin override) | `user_choice` / missing / other → null.
+/// Also accepts `ek_suchi` / `flat` as aliases of `list`.
+String? parseGranthViewMode(Map<String, dynamic>? ui) {
+  final v = ui?['granth_view_mode'] ?? ui?['granthViewMode'];
+  if (v is! String) return null;
+  switch (v.trim().toLowerCase()) {
+    case 'folders':
+    case 'folder':
+      return 'folders';
+    case 'list':
+    case 'ek_suchi':
+    case 'flat':
+      return 'list';
+    default:
+      return null;
+  }
+}
+
+String _topicTitles(List<String> ids) {
+  try {
+    final byId = {for (final t in CatalogStore.I.topics) t.id: t.title};
+    return ids.map((i) => byId[i]).whereType<String>().take(3).join(' · ');
+  } catch (_) {
+    return '';
+  }
+}
+
+String _pramanTitle(String id) {
+  try {
+    for (final p in CatalogStore.I.pramans) {
+      if (p.id == id) return p.title;
+    }
+  } catch (_) {}
+  return '';
 }

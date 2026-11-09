@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 
 import '../config.dart';
 import 'analytics.dart';
+import 'notification_log.dart';
 
 class SupportMsg {
   const SupportMsg(this.fromAdmin, this.text, this.at, {this.id = -1, this.read = false, this.pending = false});
@@ -168,6 +169,7 @@ class SupportService extends ChangeNotifier {
     if (r.status == 200 && j is Map) {
       tickets = _list(j);
       unread = (j['unread_replies'] as num?)?.toInt() ?? tickets.fold(0, (a, t) => a + t.unreadReplies);
+      _logReplies();
     } else {
       error = errorText(r.status, j);
     }
@@ -183,11 +185,26 @@ class SupportService extends ChangeNotifier {
         tickets = l;
         final j = r.json;
         unread = j is Map ? (j['unread_replies'] as num?)?.toInt() ?? 0 : 0;
+        _logReplies();
         notifyListeners();
       }
       return (tickets: l, error: null);
     }
     return (tickets: const <SupportTicket>[], error: errorText(r.status, r.json));
+  }
+
+  /// t303: a ticket with a new admin reply goes into the Dashboard notifications (tap → that thread).
+  void _logReplies() {
+    for (final t in tickets) {
+      if (!t.hasNewReply || t.id <= 0) continue;
+      NotificationLog.I.record(
+        id: 'support:${t.id}:${t.lastReplyAt ?? t.unreadReplies}',
+        kind: 'support_reply',
+        title: 'सहायता: admin का जवाब${t.token > 0 ? ' · #${t.token}' : ''}',
+        body: t.subject.isNotEmpty ? t.subject : t.message,
+        link: '#/support?t=${t.id}',
+      );
+    }
   }
 
   SupportTicket? byId(int id) {

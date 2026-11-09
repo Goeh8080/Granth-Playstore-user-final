@@ -57,7 +57,25 @@ class ShelfGroup {
 
   bool get hasSubgroups => subgroups.isNotEmpty;
 
-  factory ShelfGroup.fromJson(Map<String, dynamic> j) => ShelfGroup(
+  /// Auto sub-folder id for a group's own granths once it also has sub-folders (backend
+  /// moves them there when the first sub-folder is added: "अन्य <title>").
+  static const kGeneralId = 'general';
+
+  /// Mixed group (own granths/keywords AND sub-folders, e.g. an older config or one mid-edit):
+  /// the own granths go into a synthetic `general` sub-folder so nothing silently drops to अन्य.
+  factory ShelfGroup.fromJson(Map<String, dynamic> j) {
+    final g = ShelfGroup._fromJson(j);
+    if (!g.hasSubgroups || (g.granthIds.isEmpty && g.keywords.isEmpty) || g.subgroups.any((s) => s.id == kGeneralId)) return g;
+    return ShelfGroup(
+      id: g.id, title: g.title, icon: g.icon, tone: g.tone, notKeywords: g.notKeywords, visible: g.visible, comingSoon: g.comingSoon,
+      subgroups: [
+        ...g.subgroups,
+        ShelfGroup(id: kGeneralId, title: 'अन्य ${g.title}', icon: g.icon, tone: g.tone, granthIds: g.granthIds, keywords: g.keywords, notKeywords: g.notKeywords),
+      ],
+    );
+  }
+
+  factory ShelfGroup._fromJson(Map<String, dynamic> j) => ShelfGroup(
         id: '${j['id']}',
         title: '${j['title']}',
         icon: '${j['icon'] ?? 'misc'}',
@@ -183,7 +201,9 @@ class ShelfIndex {
     for (final g in granths) {
       if (hidden.contains(g.id)) continue;
       Placement p;
-      final ov = overrides[g.id];
+      var ov = overrides[g.id];
+      // Override to a group that has since got sub-folders → its auto `general` sub-folder.
+      if (ov != null && !leafKeys.contains(ov) && leafKeys.contains('$ov/${ShelfGroup.kGeneralId}')) ov = '$ov/${ShelfGroup.kGeneralId}';
       if (ov != null && (leafKeys.contains(ov) || ov == kOtherId)) {
         p = Placement(ov, 'override');
       } else if (byId.containsKey(g.id)) {

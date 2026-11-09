@@ -51,7 +51,8 @@ void main() {
       expect(passthrough(b), isNull);
       final p = prepareImageSync(b);
       expect(p, isNotNull);
-      expect(p!.png == null ? p.bytes[0] : 0xFF, 0xFF, reason: 'converted to an ordinary JPEG');
+      expect(p!.rgba, isTrue, reason: 'converted to lossless RGB pixels (t299 100% quality)');
+      expect(p.bytes.length, p.w * p.h * 4);
     });
 
     test('a 16-bit PNG and a transparent PNG still give a picture', () {

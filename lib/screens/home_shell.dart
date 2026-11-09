@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../ai/navigator/voice_navigator.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/services.dart';
 
@@ -418,6 +419,9 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
                           ),
                         ),
                       ),
+                    // t304 Navigator voice: mic (admin + user opt-in only) and the touch ripple layer.
+                    Positioned(left: 16, bottom: 36 + tabsH, child: const NavMicButton()),
+                    const Positioned.fill(child: NavTouchLayer()),
                     // Round-3: the floating bar slides/fades in and out.
                     Positioned(
                       left: 0,

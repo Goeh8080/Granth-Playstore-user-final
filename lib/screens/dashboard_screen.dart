@@ -9,6 +9,7 @@ import '../state/ui_prefs.dart';
 import '../theme/colors.dart';
 import '../widgets/announcement_banner.dart';
 import '../widgets/common.dart';
+import '../widgets/dash_cards.dart';
 import '../widgets/live_panel.dart';
 import '../widgets/panel.dart';
 
@@ -49,6 +50,10 @@ class _DashboardPanelState extends State<DashboardPanel> with LivePanel {
       Entry(index: 3, dx: dx, child: _DashCard(tone: Tone.gold, icon: 'image', count: s.pramans.length, label: 'प्रमाण', hash: '#/pramans')),
       Entry(index: 4, dx: dx, child: const _NoteCard()),
       if (RemoteConfig.I.supportEnabled) Entry(index: 5, dx: dx, child: const SupportDashCard()),
+      // t303: further down — auto sync / download state, then recent notifications.
+      Entry(index: 6, dx: dx, child: const SyncDashCard()),
+      Entry(index: 7, dx: dx, child: const NotificationsDashCard()),
+      const SizedBox(height: 24),
     ]);
   }
 }

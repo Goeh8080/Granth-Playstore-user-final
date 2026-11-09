@@ -8,6 +8,7 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 
 import '../models/models.dart';
+import '../services/notification_log.dart';
 import '../services/admin_sync.dart';
 import '../services/analytics.dart';
 import '../services/catalog_store.dart';
@@ -395,6 +396,7 @@ class ChatController extends ChangeNotifier {
       );
       c.updated = now;
       chats = await store.save(c);
+      NotificationLog.I.record(id: 'admin:$ref', kind: 'admin_reply', title: 'admin का उत्तर', body: a.answer, conv: c.id);
       if (current == null && !sending) current = c;
       if (identical(c, current)) tick++;
       notifyListeners();

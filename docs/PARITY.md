@@ -17,7 +17,7 @@
 
 | Feature (original) | Status | Notes |
 | --- | --- | --- |
-| Package `com.wnm.granthprabandhan`, label ग्रंथ प्रबंधन, portrait, light | ✅ | Same id. Different signing key, so it cannot update the Play Store install. Version for external testing: **1.0.0 (versionCode 1)** from `pubspec.yaml`; split APKs keep versionCode 1 (`force-version-code-ignoring-abi=true` in `android/gradle.properties`). The सेटिंग screen reads the version from the installed app. |
+| Package `com.granth.app` (was `com.wnm.granthprabandhan`), label ग्रंथ प्रबंधन, portrait, light | ✅ | New id (Nov 2026): a separate app from old installs; Satlok-signed. Version for external testing: **1.0.0 (versionCode 1)** from `pubspec.yaml`; split APKs keep versionCode 1 (`force-version-code-ignoring-abi=true` in `android/gradle.properties`). The सेटिंग screen reads the version from the installed app. |
 | Splash (white + mark) | ➕ | Native white launch + animated Flutter splash. It never waits more than 3.5 s for the network. |
 | Hardware back (`__granthBack`): close overlay → menu → previous screen → double-back on Dashboard → exit confirm | ✅ | Same order, same 80–900 ms double-tap window, same "क्या आप बाहर निकलना चाहते हैं?" card. |
 | Exit (`exit-app` → `finishAffinity`) | ✅ | MethodChannel `exitApp`. |

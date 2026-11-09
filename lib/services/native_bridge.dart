@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 /// Dart side of `MainActivity.kt` — replaces the React Native `GranthDownloads` module.
 class NativeBridge {
   NativeBridge._();
-  static const _ch = MethodChannel('com.wnm.granthprabandhan/downloads');
+  static const _ch = MethodChannel('com.granth.app/downloads');
 
   /// Copies a finished file into the public Downloads folder (MediaStore on Android 10+).
   static Future<String?> copyToDownloads(String path, String name, String mime) async {

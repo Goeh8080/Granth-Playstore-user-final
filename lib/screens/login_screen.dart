@@ -188,7 +188,7 @@ class LoginPage extends StatelessWidget {
                   ),
                   const Spacer(flex: 2),
                   Text(
-                    'लॉगिन करने पर आपका नाम, Gmail और आँकड़े अकाउंट में दिखेंगे। लॉगिन ज़रूरी नहीं है।',
+                    'लॉगिन करने पर आपका नाम, Gmail और आँकड़े अकाउंट में दिखेंगे।',
                     textAlign: TextAlign.center,
                     style: GText.sans(size: 13.5, color: GColors.muted, height: 1.45),
                   ),

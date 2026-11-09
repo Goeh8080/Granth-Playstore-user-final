@@ -138,9 +138,11 @@ class _GranthImageState extends State<GranthImage> {
         height: thumb ? 52 : null,
         fit: thumb ? BoxFit.cover : (widget.kind == ShotKind.lightbox ? BoxFit.contain : BoxFit.fitWidth),
         gaplessPlayback: true,
-        // Original file, full decode while magnified; bounded thumbnails at 1×.
-        cacheWidth: zoomed || widget.kind == ShotKind.lightbox ? null : (thumb ? 156 : 1080),
-        filterQuality: FilterQuality.medium,
+        // 100% quality: the original file at full resolution while zoomed / in the viewer;
+        // otherwise decoded at the full screen width in physical pixels (a picture is never shown
+        // wider than that unzoomed; works inside IntrinsicHeight grids), never upscaled.
+        cacheWidth: zoomed || widget.kind == ShotKind.lightbox ? null : displayDecodeWidth(context, thumb ? 52 : MediaQuery.sizeOf(context).width),
+        filterQuality: FilterQuality.high,
         frameBuilder: (context, child, frame, sync) {
           if (frame != null && _ratio == null && _wantsRatio) _learn();
           return sync
@@ -209,4 +211,15 @@ class _RoundBtn extends StatelessWidget {
           child: child,
         ),
       );
+}
+
+/// Decode width for a picture shown [logicalWidth] wide: physical pixels at max(device ratio, 3)
+/// (so a Card PDF drawn at 3× is just as sharp), rounded up to 128 px buckets to keep image
+/// cache keys stable. Null (= original size) when the width is unbounded. Flutter never decodes
+/// above the file's own size, so small originals stay 1:1.
+int? displayDecodeWidth(BuildContext context, double logicalWidth) {
+  if (!logicalWidth.isFinite || logicalWidth <= 0) return null;
+  final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 3.0;
+  final px = (logicalWidth * (dpr < 3 ? 3 : dpr)).ceil();
+  return ((px + 127) ~/ 128) * 128;
 }

@@ -1,4 +1,4 @@
-package com.wnm.granthprabandhan
+package com.granth.app
 
 import android.content.ContentValues
 import android.content.Context

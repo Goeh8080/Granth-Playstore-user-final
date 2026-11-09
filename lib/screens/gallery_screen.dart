@@ -12,6 +12,7 @@ import '../state/toast.dart';
 import '../state/ui_prefs.dart';
 import '../theme/colors.dart';
 import '../widgets/common.dart';
+import '../widgets/granth_image.dart' show displayDecodeWidth;
 import '../widgets/zoom.dart';
 import '../widgets/live_panel.dart';
 import '../widgets/overlays.dart';
@@ -182,8 +183,8 @@ class _GalleryPanelState extends State<GalleryPanel> with LivePanel {
         borderRadius: BorderRadius.circular(8),
         child: ValueListenableBuilder<bool>(
           valueListenable: AppZoom.magnified,
-          builder: (_, zoomed, _) => Image.file(File(e.filePath), width: double.infinity, fit: BoxFit.fitWidth, cacheWidth: zoomed ? null : 900,
-            filterQuality: FilterQuality.medium, errorBuilder: (_, _, _) => const Skeleton())),
+          builder: (_, zoomed, _) => Image.file(File(e.filePath), width: double.infinity, fit: BoxFit.fitWidth, cacheWidth: zoomed ? null : displayDecodeWidth(context, MediaQuery.sizeOf(context).width),
+            filterQuality: FilterQuality.high, errorBuilder: (_, _, _) => const Skeleton())),
       );
     } else if (e.previewPath != null && File(e.previewPath!).existsSync()) {
       media = ClipRRect(
@@ -299,7 +300,7 @@ class _GalleryViewer extends StatelessWidget {
                     height: h,
                     child: ZoomStage(
                       child: Center(
-                        child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(File(d.filePath), fit: BoxFit.contain)),
+                        child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(File(d.filePath), fit: BoxFit.contain, filterQuality: FilterQuality.high)),
                       ),
                     ),
                   ),

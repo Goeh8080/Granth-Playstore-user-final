@@ -97,7 +97,7 @@ void main() {
   testWidgets('Login page: Back exits the app', (t) async {
     LoginGate.enabled = true;
     final calls = <String>[];
-    t.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('com.wnm.granthprabandhan/downloads'), (c) async {
+    t.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('com.granth.app/downloads'), (c) async {
       calls.add(c.method);
       return null;
     });
@@ -107,6 +107,6 @@ void main() {
     await settle(t);
     expect(calls, contains('exitApp'));
     expect(find.byKey(const ValueKey('login-page')), findsOneWidget);
-    t.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('com.wnm.granthprabandhan/downloads'), null);
+    t.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('com.granth.app/downloads'), null);
   });
 }

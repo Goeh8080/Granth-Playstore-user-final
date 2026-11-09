@@ -110,11 +110,15 @@ void main() {
     expect((o.r.toInt(), o.g.toInt(), o.b.toInt()), (7, 0, 3));
   });
 
-  test('only what PDF cannot take directly is converted, at full size and q95', () {
-    // BMP: not embeddable directly.
-    final bmp = Uint8List.fromList(img.encodeBmp(pattern(300, 200)));
+  test('only what PDF cannot take directly is converted, at full size and lossless (t299)', () {
+    // BMP: not embeddable directly → original pixels, no JPEG re-encode, no downscale.
+    final src = pattern(300, 200);
+    final bmp = Uint8List.fromList(img.encodeBmp(src));
     final p = prepareImageSync(bmp)!;
-    expect((p.w, p.h, p.png, p.rgba), (300, 200, null, false));
-    expect(jpegInfo(p.bytes), isNotNull);
+    expect((p.w, p.h, p.png, p.rgba), (300, 200, null, true));
+    expect(p.bytes.length, 300 * 200 * 4);
+    final px = src.getPixel(17, 9);
+    final i = (9 * 300 + 17) * 4;
+    expect([p.bytes[i], p.bytes[i + 1], p.bytes[i + 2]], [px.r.toInt(), px.g.toInt(), px.b.toInt()]);
   });
 }

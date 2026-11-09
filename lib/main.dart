@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'ai/navigator/voice_navigator.dart';
+import 'services/app_update.dart';
 import 'package:flutter/services.dart';
 
 import 'screens/home_shell.dart';
@@ -26,6 +28,9 @@ import 'widgets/zoom.dart';
 import 'widgets/bounded_scroll.dart';
 import 'util/log.dart';
 import 'ai/chat_controller.dart';
+
+/// Root navigator (t306 update alert can open its dialog from anywhere).
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() {
   runZonedGuarded<Future<void>>(
@@ -63,6 +68,8 @@ void main() {
       }
       try {
         AppNav.onEnterAi = () => ChatController.I.enterFresh();
+        VoiceNavigator.I.attach(); // t304: idle unless the admin + the user turned it on
+        AppUpdate.I.attach(appNavigatorKey); // t306: admin update alert (optional config key)
         SupportService.uidOf = () => FirebaseBridge.I.uid;
         AppNav.I.restore();
       } catch (e) {
@@ -224,6 +231,7 @@ class _GranthAppState extends State<GranthApp> with WidgetsBindingObserver {
     // the hidden iOS theme switches at once
     listenable: UiPrefs.I,
     builder: (context, _) => MaterialApp(
+      navigatorKey: appNavigatorKey,
       title: 'ग्रंथ प्रबंधन',
       debugShowCheckedModeBanner: false,
       scrollBehavior: const BoundedScrollBehavior(),

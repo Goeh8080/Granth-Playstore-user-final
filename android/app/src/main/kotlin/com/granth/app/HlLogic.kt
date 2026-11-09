@@ -1,4 +1,4 @@
-package com.wnm.granthprabandhan
+package com.granth.app
 
 import java.net.URI
 

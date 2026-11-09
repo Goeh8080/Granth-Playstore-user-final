@@ -168,12 +168,13 @@ void main() {
     'chooser contains genuine bundled folder and list screenshots with accessible labels',
     (t) async {
       await boot(t, '#/granths');
+      ImageProvider base(ImageProvider p) => p is ResizeImage ? p.imageProvider : p;
       final images = t
           .widgetList<Image>(find.byType(Image))
-          .where((i) => i.image is AssetImage)
+          .where((i) => base(i.image) is AssetImage)
           .toList();
       expect(
-        images.map((i) => (i.image as AssetImage).assetName),
+        images.map((i) => (base(i.image) as AssetImage).assetName),
         containsAll([
           'assets/previews/granth-folders-example.png',
           'assets/previews/granth-list-example.png',

@@ -9,7 +9,9 @@ const kOrigin = 'https://granth.wnmsolutions.com';
 const kShareBase = 'https://granth.grok.me/open';
 
 /// Store page of this app (Settings → ऐप शेयर करें).
-const kPlayStoreUrl = 'https://play.google.com/store/apps/details?id=com.wnm.granthprabandhan';
+/// Android application id (t305 rename; was com.wnm.granthprabandhan).
+const kPackageId = 'com.granth.app';
+const kPlayStoreUrl = 'https://play.google.com/store/apps/details?id=$kPackageId';
 
 final RegExp _mediaPath = RegExp(r'^(granths|uploads)/[A-Za-z0-9_.-]+$');
 

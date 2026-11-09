@@ -144,8 +144,9 @@ Future<T> _guardRender<T>(Future<T> f) => f.timeout(_renderTimeout, onTimeout: (
 /// Round 6 — original quality: page pictures go into the PDF exactly as saved, at their
 /// own resolution. Every normal JPEG (any size) is embedded byte for byte (DCTDecode); a
 /// PNG without transparency keeps its own compressed pixels (lossless). Only what a PDF
-/// reader cannot take directly is converted: transparent PNGs are flattened on white and
-/// stored losslessly; other formats (WebP…) become a full-resolution JPEG q95.
+/// reader cannot take directly is converted: flattened on white and stored losslessly at full
+/// resolution (t299: WebP etc. too, no JPEG re-encode). Only pictures over
+/// [kDartDecodeMaxPixels] go through the native codec (JPEG q100, side ≤ [kPdfImageSide]).
 /// (Before: anything over 2600 px / 1.5 MB was scaled to 1800 px and re-encoded at q85.)
 const kPassBytes = 1500000; // kept for callers; no longer limits pass-through pictures
 /// Largest side a converted (non pass-through) picture keeps; bounds decode memory.
@@ -202,21 +203,18 @@ PreparedImage? prepareImageSync(Uint8List bytes, [int maxBytes = kPassBytes]) {
     var src = img.decodeImage(bytes);
     if (src == null || src.width * src.height > kDartDecodeMaxPixels) return null;
     src = img.bakeOrientation(src); // upright, as the app shows it
-    final png = head?.kind == 'png';
     if (src.hasAlpha) {
       final bg = img.Image(width: src.width, height: src.height);
       img.fill(bg, color: img.ColorRgb8(255, 255, 255));
       img.compositeImage(bg, src);
       src = bg;
     }
-    if (png) {
-      // Lossless (text scans stay sharp): raw pixels, compressed by the PDF writer.
-      final rgba = src.convert(format: img.Format.uint8, numChannels: 4, alpha: 255);
-      return PreparedImage.rgba(rgba.getBytes(order: img.ChannelOrder.rgba), rgba.width, rgba.height);
-    }
-    final scale = math.min(1.0, kPdfImageSide / math.max(src.width, src.height));
-    final im = scale < 1 ? img.copyResize(src, width: math.max(1, (src.width * scale).round()), height: math.max(1, (src.height * scale).round()), interpolation: img.Interpolation.average) : src;
-    return PreparedImage(Uint8List.fromList(img.encodeJpg(im, quality: kConvertQuality)), im.width, im.height);
+    // 100% quality (t299): every converted picture (transparent PNG, WebP, CMYK JPEG…) keeps
+    // its full original resolution and is stored losslessly (raw pixels, Flate-compressed by
+    // the PDF writer) — no downscaling, no JPEG re-encode. Memory stays bounded by
+    // [kDartDecodeMaxPixels]; only larger pictures take the native path.
+    final rgba = src.convert(format: img.Format.uint8, numChannels: 4, alpha: 255);
+    return PreparedImage.rgba(rgba.getBytes(order: img.ChannelOrder.rgba), rgba.width, rgba.height);
   } catch (_) {
     return null;
   }
@@ -229,11 +227,12 @@ Future<PreparedImage?> _prepareNative(File f, Uint8List raw, int maxBytes) async
   if (passthrough(raw) != null) return null; // embedded as-is
   if (!ImageStore.bytesLookComplete(raw)) return null; // damaged: re-fetched instead
   final head = imageHeader(raw);
-  // Transparent PNGs of normal size: the lossless Dart path (keeps text scans sharp).
-  if (head?.kind == 'png' && head!.w * head.h <= 12000000) return null;
+  // t299 100% quality: anything the lossless full-resolution Dart path can hold goes there;
+  // the native codec (JPEG q100, bounded side) is only for pictures too big to decode in Dart.
+  if (head == null || head.w * head.h <= kDartDecodeMaxPixels) return null;
   final out = '${Directory.systemTemp.path}/granth-prep-${f.hashCode}-${DateTime.now().microsecondsSinceEpoch}.jpg';
   try {
-    final r = await NativeBridge.prepareImage(f.path, out, maxSide: kPdfImageSide, quality: kConvertQuality);
+    final r = await NativeBridge.prepareImage(f.path, out, maxSide: kPdfImageSide, quality: 100);
     if (r == null) return null;
     return PreparedImage(await File(out).readAsBytes(), r.w, r.h);
   } catch (_) {
@@ -256,8 +255,10 @@ Future<PreparedImage?> prepareWithEngine(Uint8List bytes) async {
   ui.Image? im;
   try {
     final head = imageHeader(bytes);
-    final big = head != null && math.max(head.w, head.h) > kPdfImageSide;
-    codec = await ui.instantiateImageCodec(bytes, targetWidth: big && head.w >= head.h ? kPdfImageSide : null, targetHeight: big && head.h > head.w ? kPdfImageSide : null);
+    // Full resolution unless the picture is too big to hold in memory (t299 100% quality).
+    final big = head != null && head.w * head.h > kDartDecodeMaxPixels;
+    final side = big ? math.sqrt(kDartDecodeMaxPixels / (head.w * head.h)) : 1.0;
+    codec = await ui.instantiateImageCodec(bytes, targetWidth: big && head.w >= head.h ? (head.w * side).floor() : null, targetHeight: big && head.h > head.w ? (head.h * side).floor() : null);
     im = (await codec.getNextFrame()).image;
     final data = await im.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
     if (data == null) return null;

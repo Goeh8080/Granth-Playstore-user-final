@@ -26,7 +26,7 @@ if (!hasReleaseKey && gradle.startParameter.taskNames.any { t ->
 }
 
 android {
-    namespace = "com.wnm.granthprabandhan"
+    namespace = "com.granth.app"
     // Play requires targetSdk ≥ 35; pinned so a Flutter SDK change can not lower it.
     compileSdk = maxOf(flutter.compileSdkVersion, 36)
     ndkVersion = flutter.ndkVersion
@@ -38,7 +38,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.wnm.granthprabandhan"
+        applicationId = "com.granth.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 24

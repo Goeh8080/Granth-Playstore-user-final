@@ -1,4 +1,4 @@
-package com.wnm.granthprabandhan
+package com.granth.app
 
 import android.Manifest
 import android.app.ActivityManager
@@ -34,7 +34,7 @@ import java.util.concurrent.Executors
  * and closes the app after the in-app exit confirmation.
  */
 class MainActivity : FlutterActivity() {
-    private val channelName = "com.wnm.granthprabandhan/downloads"
+    private val channelName = "com.granth.app/downloads"
     private var pending: Pair<MethodCall, MethodChannel.Result>? = null
     private var pendingNotif: MethodChannel.Result? = null
 
@@ -103,7 +103,7 @@ class MainActivity : FlutterActivity() {
          */
         fun attachChannels(ctx: Context, engine: FlutterEngine) {
             val app = ctx.applicationContext
-            MethodChannel(engine.dartExecutor.binaryMessenger, "com.wnm.granthprabandhan/downloads").setMethodCallHandler { call, result ->
+            MethodChannel(engine.dartExecutor.binaryMessenger, "com.granth.app/downloads").setMethodCallHandler { call, result ->
                 when (call.method) {
                     "pagesProgress" -> {
                         PageSyncService.update(app, call.argument<Int>("done") ?: 0, call.argument<Int>("total") ?: 0)

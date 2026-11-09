@@ -18,6 +18,7 @@ import 'image_cache.dart';
 import 'native_bridge.dart';
 import 'search.dart';
 import 'storage.dart';
+import 'notification_log.dart';
 import '../util/log.dart';
 
 enum SyncStatus { booting, ready, offline, syncing, error }
@@ -422,6 +423,22 @@ class CatalogStore extends ChangeNotifier {
     return f;
   }
 
+  /// t303: प्रमाण that arrived with this sync → one Dashboard notification (tap → the newest).
+  void _logNewPramans(Set<String> before) {
+    try {
+      final fresh = pramans.where((p) => !before.contains(p.id)).toList();
+      if (fresh.isEmpty) return;
+      final first = fresh.first;
+      NotificationLog.I.record(
+        id: 'new:${fresh.map((p) => p.id).take(20).join(',')}',
+        kind: 'new_praman',
+        title: fresh.length == 1 ? 'नया प्रमाण' : '${fresh.length} नए प्रमाण',
+        body: fresh.take(3).map((p) => p.title).join(' · '),
+        link: fresh.length == 1 ? '#/pramans?id=${Uri.encodeComponent(first.id)}' : '#/pramans',
+      );
+    } catch (_) {}
+  }
+
   Future<bool> _doSync(bool silent) async {
     if (!online) {
       final had = hasData || syncedAt != null;
@@ -452,7 +469,9 @@ class CatalogStore extends ChangeNotifier {
         final file = c.fileText;
         await (file != null ? Store.I.writeText('catalog.json', file) : Store.I.writeJson('catalog.json', c.toJson()));
         _lastJson = enc;
+        final before = hasData ? {for (final p in pramans) p.id} : null;
         _setCatalog(c);
+        if (before != null && before.isNotEmpty) _logNewPramans(before);
         _catalogChanged();
         changed = true;
       } else {

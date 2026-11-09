@@ -25,3 +25,6 @@ The chooser pans each real screenshot strip with a lightweight in-app `Animation
 
 ## Settled opaque capture (9Nov2026)
 Chooser uses an opaque paper `SheetCard` (look theming skipped) and a 0.55 brown scrim. Preview/GIF captures pump past the 280ms showPop entry fade before any frame is written, so the settled dialog is fully opaque with a proper dim barrier.
+
+## Full-screen folder strip + themed chooser (9Nov2026)
+`granth-folders-example.png` is now the complete real folder screen (780×1880 px: every religion folder, अन्य and सभी ग्रंथ), captured on a tall 1500-logical-px surface and cropped just below the last FolderRow. `granth-list-example.png` is the real 3-column row (780×1146 px), cropped above the floating AI button. The chooser pans the full folder strip top→bottom in a loop (pause at both ends) at zoom 1, so the whole folder page is visible, and the right strip shows the real 3×3 grid. Decoded at layout width × device pixel ratio (≤ the source 780 px) with FilterQuality.high. All chooser text uses the app Theme (textTheme/colorScheme); no hardcoded colors. Regenerate: `CAPTURE_EXAMPLES=1 flutter test test/granth_examples_capture_test.dart --no-pub`, then `test/granth_choice_anim_capture_test.dart` for the 320dp preview frames/MP4.

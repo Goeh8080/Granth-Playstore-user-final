@@ -70,10 +70,11 @@ void main() {
           }
         }
       });
-      await t.binding.setSurfaceSize(const Size(390, 780));
       addTearDown(() => t.binding.setSurfaceSize(null));
       final key = GlobalKey();
       for (final mode in ['folders', 'list']) {
+        // Tall phone surface so the COMPLETE folder screen (every religion folder) is captured.
+        await t.binding.setSurfaceSize(Size(390, mode == 'folders' ? 1500 : 1100));
         UiPrefs.I.setCols(Store.kGranthCols, mode == 'folders' ? 2 : 3);
         await Store.I.setString('granth-view-mode', mode);
         await t.pumpWidget(const SizedBox());
@@ -124,6 +125,20 @@ void main() {
           expect(positions[2].left, greaterThan(positions[1].right));
         }
         final cropY = ((t.getTopLeft(first).dy - 66).clamp(0, 700) * 2).round();
+        // End: below the last folder row (full folder screen) / above the floating AI button.
+        final fab = find.byKey(const ValueKey('ask-ai-fab'));
+        final fabTop = fab.evaluate().isEmpty ? double.infinity : t.getTopLeft(fab).dy - 8;
+        double endDy;
+        if (mode == 'folders') {
+          final rows = find.byType(FolderRow);
+          endDy = t.getBottomLeft(rows.last).dy + 14;
+          expect(endDy, lessThan(fabTop), reason: 'whole folder screen must fit above the AI button');
+        } else {
+          final cards = find.byType(GranthCard);
+          endDy = t.getBottomLeft(cards.at(2)).dy + 14;
+          if (endDy > fabTop) endDy = fabTop;
+        }
+        final cropEnd = (endDy * 2).round();
         await t.runAsync(() async {
           final full =
               await (key.currentContext!.findRenderObject()
@@ -136,18 +151,20 @@ void main() {
               0,
               cropY.toDouble(),
               full.width.toDouble(),
-              full.height - cropY.toDouble(),
+              (cropEnd - cropY).toDouble(),
             ),
             Rect.fromLTWH(
               0,
               0,
               full.width.toDouble(),
-              full.height - cropY.toDouble(),
+              (cropEnd - cropY).toDouble(),
             ),
             Paint(),
           );
           final picture = recorder.endRecording();
-          final image = await picture.toImage(full.width, full.height - cropY);
+          final image = await picture.toImage(full.width, cropEnd - cropY);
+          // ignore: avoid_print
+          print('CAPTURE $mode ${full.width}x${cropEnd - cropY}');
           full.dispose();
           picture.dispose();
           final data = await image.toByteData(format: ui.ImageByteFormat.png);

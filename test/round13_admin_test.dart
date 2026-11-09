@@ -467,7 +467,7 @@ void main() {
         await asked();
         final calls = <MethodCall>[];
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
-          const MethodChannel('com.wnm.granthprabandhan/downloads'),
+          const MethodChannel('com.granth.app/downloads'),
           (c) async {
             calls.add(c);
             return null;
@@ -476,7 +476,7 @@ void main() {
         addTearDown(
           () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
               .setMockMethodCallHandler(
-                const MethodChannel('com.wnm.granthprabandhan/downloads'),
+                const MethodChannel('com.granth.app/downloads'),
                 null,
               ),
         );

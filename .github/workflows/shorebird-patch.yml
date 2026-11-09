@@ -1,6 +1,7 @@
 name: Shorebird Patch
 
 # Manual only: publishes a code-push patch for an existing Shorebird release (no new APK).
+# --allow-build-flag-diffs: the define file has the same APP_KEY as the release; only its temp path/handling differs.
 on:
   workflow_dispatch:
     inputs:
@@ -58,4 +59,4 @@ jobs:
             printf '{"APP_KEY":"%s"}' "$APP_KEY" > "$RUNNER_TEMP/dd.json"
             args="--dart-define-from-file=$RUNNER_TEMP/dd.json"
           fi
-          shorebird patch android --release-version "${{ inputs.release_version }}" --allow-asset-diffs $args
+          shorebird patch android --release-version "${{ inputs.release_version }}" --allow-asset-diffs --allow-build-flag-diffs $args

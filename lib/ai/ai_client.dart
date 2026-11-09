@@ -104,9 +104,11 @@ class QuizResult {
   static QuizResult? fromJson(Object? j) {
     if (j is! Map || j['question_id'] == null) return null;
     final c = j['correct'];
+    // The worker sends 0-based integers; a numeric string or a float is accepted too. Range is
+    // checked against the question's options later (correctIndexIn), not here.
     int? idx(Object? v) {
-      final n = v is num ? v.toInt() : (v is String ? int.tryParse(v.trim()) : null);
-      return n != null && n >= 0 && n < 6 ? n : null;
+      final n = v is num ? (v == v.roundToDouble() ? v.toInt() : null) : (v is String ? int.tryParse(v.trim()) : null);
+      return n != null && n >= 0 && n <= 9 ? n : null;
     }
     final co = j['correct_option'];
     return QuizResult(
@@ -119,20 +121,37 @@ class QuizResult {
     );
   }
 
-  /// Index of the right option in [options], or null when the worker did not say (older worker).
+  /// Index of the right option in [options], or null when it is not known (older worker).
+  ///
+  /// Order: a 0-based `correct_index` that agrees with `correct_option` (or has no text to check);
+  /// else the `correct_option` text matched loosely ([quizOptionKey]); else a 1-based index only
+  /// when it fits nothing else (`== options.length`); else, for a right answer, the pick itself.
+  /// The verdict wins over the fields: a "wrong" verdict never paints the pick green.
   int? correctIndexIn(List<String> options, {String? selected}) {
-    final byText = correctOption == null ? -1 : options.indexWhere((o) => o.trim() == correctOption);
-    final ci = correctIndex;
-    if (ci != null && ci < options.length && (correctOption == null || byText < 0 || byText == ci)) return ci;
-    if (byText >= 0) return byText;
-    return correct == true ? selectedIndexIn(options, selected) : null;
+    final sel = selectedIndexIn(options, selected);
+    int? found() {
+      final byText = correctOption == null ? -1 : quizOptionIndex(options, correctOption!);
+      final ci = correctIndex;
+      if (ci != null && ci < options.length && (byText < 0 || byText == ci)) return ci;
+      if (byText >= 0) return byText;
+      if (ci != null && ci == options.length && ci > 0 && correctOption == null) return ci - 1;
+      return null;
+    }
+    final right = found();
+    if (correct == true) return sel ?? right;
+    if (correct == false && right != null && right == sel) return null; // contradicts the verdict
+    return right;
   }
 
-  /// Index of the option the user picked: its text first, else the worker's `selected_index`.
+  /// Index of the option the user picked: its text (loosely), an "A" / "2" / "ख" label, else the
+  /// worker's `selected_index`.
   int? selectedIndexIn(List<String> options, String? selected) {
-    final s = selected?.trim();
-    final i = s == null ? -1 : options.indexWhere((o) => o.trim() == s);
-    if (i >= 0) return i;
+    if (selected != null && selected.trim().isNotEmpty) {
+      final i = quizOptionIndex(options, selected);
+      if (i >= 0) return i;
+      final l = quizOptionLabel(selected, options.length);
+      if (l != null) return l;
+    }
     final si = selectedIndex;
     return si != null && si < options.length ? si : null;
   }
@@ -145,6 +164,39 @@ class QuizResult {
     'correct_option': ?correctOption,
     'selected_index': ?selectedIndex,
   };
+}
+
+/// Loose key for comparing quiz option texts: no leading "A)" / "क)" / "1." label, Devanagari
+/// digits as Latin, lower case, no spaces or punctuation.
+String quizOptionKey(String s) {
+  var t = s.trim().replaceFirst(RegExp(r'^[\(\[]?\s*(?:[a-dA-D]|[क-घ]|[1-9]|[१-९])\s*[\)\]\.:।\-]\s*(?=\S)'), '');
+  t = t.replaceAllMapped(RegExp('[०-९]'), (m) => '${m[0]!.codeUnitAt(0) - 0x0966}');
+  return t.toLowerCase().replaceAll(RegExp(r'[\s\p{P}\p{S}]+', unicode: true), '');
+}
+
+/// The option in [options] that [text] names: exact (trimmed) first, else one loose match.
+int quizOptionIndex(List<String> options, String text) {
+  final exact = options.indexWhere((o) => o.trim() == text.trim());
+  if (exact >= 0) return exact;
+  final k = quizOptionKey(text);
+  if (k.isEmpty) return -1;
+  final hits = [for (final (i, o) in options.indexed) if (quizOptionKey(o) == k) i];
+  return hits.length == 1 ? hits.single : -1;
+}
+
+/// "A", "b)", "(c)", "2", "२.", "ख", "option 3" → 0-based index (within [count]), else null.
+int? quizOptionLabel(String text, int count) {
+  final m = RegExp(r'^\s*(?:option|विकल्प|उत्तर|answer|jawab|जवाब)?\s*[:\-]?\s*\(?\s*([a-dA-D]|[1-9]|[१-९]|[क-घ])\s*[\).।:]?\s*$').firstMatch(text);
+  if (m == null) return null;
+  final c = m[1]!;
+  final u = c.codeUnitAt(0);
+  final i = switch (c) {
+    _ when RegExp('[a-dA-D]').hasMatch(c) => c.toLowerCase().codeUnitAt(0) - 0x61,
+    _ when RegExp('[1-9]').hasMatch(c) => u - 0x31,
+    _ when RegExp('[१-९]').hasMatch(c) => u - 0x0967,
+    _ => const ['क', 'ख', 'ग', 'घ'].indexOf(c),
+  };
+  return i >= 0 && i < count ? i : null;
 }
 
 /// One SRJM book citation under an answer.

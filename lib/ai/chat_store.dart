@@ -23,6 +23,8 @@ class ChatMsg {
   final QuizQuestion? quizQuestion;
   final String? quizSelection;
 
+  /// The option tapped, kept on the question message before the verdict arrives.
+  ChatMsg picked(String selected) => ChatMsg(role: role, text: text, cited: cited, at: at, ref: ref, ask: ask, sources: sources, refs: refs, correction: correction, quizResult: quizResult, quizQuestion: quizQuestion, quizSelection: selected);
   ChatMsg graded(QuizResult result, String selected) => ChatMsg(role: role, text: text, cited: cited, at: at, ref: ref, ask: ask, sources: sources, refs: refs, correction: correction, quizResult: result, quizQuestion: quizQuestion, quizSelection: selected);
 
   /// Tappable app references (assistant messages only; Worker w3+).

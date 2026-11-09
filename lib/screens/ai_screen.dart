@@ -727,7 +727,7 @@ class _Citations extends StatelessWidget {
       spacing: 6,
       runSpacing: 6,
       children: [
-        for (final p in pramans.take(8))
+        for (final p in pramans.take(kMaxPramanShown))
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: c.maxWidth),
             child: Pill(
@@ -740,7 +740,6 @@ class _Citations extends StatelessWidget {
               onTap: () => openPraman(p),
             ),
           ),
-        if (pramans.length > 8) Pill(label: '+${pramans.length - 8} और'),
       ],
     ),
   );
@@ -1219,6 +1218,9 @@ class _AiOff extends StatelessWidget {
 
 /// Worker w3 `refs`: tappable pills that open app routes. Cited refs are prominent (topic tone,
 /// bold); related ones (topic/granth of a cited praman, suggestions) are plain and smaller.
+/// Goutam (Nov 10): at most 5 pramaan under one answer (cited ones first).
+const kMaxPramanShown = 5;
+
 class AiRefPills extends StatelessWidget {
   const AiRefPills(this.refs, {super.key, required this.find});
   final List<AiRef> refs;
@@ -1259,7 +1261,7 @@ class AiRefPills extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shown = refs.where((r) => r.type != 'note'); // t184: admin notes are never shown as refs
-    final sorted = [...shown.where((r) => r.cited), ...shown.where((r) => !r.cited)];
+    final sorted = [...shown.where((r) => r.cited), ...shown.where((r) => !r.cited)].take(kMaxPramanShown);
     return LayoutBuilder(
       builder: (context, c) => Wrap(
         key: const ValueKey('ai-refs'),
@@ -1357,7 +1359,8 @@ class QuizOptions extends StatelessWidget {
   Widget build(BuildContext context) {
     final r = result;
     final opts = question.options;
-    final sel = r?.selectedIndexIn(opts, selected) ?? (selected == null ? null : opts.indexOf(selected!));
+    // The pick is saved on the question at tap time, so it shows (gold) while the verdict is on its way.
+    final sel = (r ?? const QuizResult(questionId: '')).selectedIndexIn(opts, selected);
     final right = r?.correctIndexIn(opts, selected: selected);
     final active = r == null && onAnswer != null;
     return Column(key: const ValueKey('quiz-options'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -1365,7 +1368,7 @@ class QuizOptions extends StatelessWidget {
         Padding(padding: const EdgeInsets.only(bottom: 8), child: Builder(builder: (context) {
           // 'right' | 'wrong' | 'picked' (no verdict) | null (plain card)
           final tone = r == null || r.correct == null
-              ? (r != null && sel == i ? 'picked' : null)
+              ? (sel == i ? 'picked' : null)
               : i == right
               ? 'right'
               : r.correct == false && (right != null || sel == i)

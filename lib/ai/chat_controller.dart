@@ -45,6 +45,28 @@ String stripRepeatedQuestions(String text, Iterable<String> questions) {
   return kept.join('\n').replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
 }
 
+/// Puts a ज्ञान चर्चा verdict on the question message it belongs to; returns its index, or null.
+///
+/// The verdict's own `question_id` decides (the worker may grade a pending question even when
+/// the app sent no `quiz_reply_to`). If that id is not in this chat, the question replied to is
+/// used only when the verdict's `correct_option` is one of its options. A question that already
+/// has a verdict is never re-graded. The pick saved at tap time wins over the reply text.
+int? applyQuizVerdict(List<ChatMsg> msgs, QuizResult v, {required String reply, String? replyTo}) {
+  var i = msgs.lastIndexWhere((m) => m.quizQuestion?.id == v.questionId);
+  if (i >= 0 && msgs[i].quizResult != null) return null;
+  if (i < 0 && replyTo != null && v.correctOption != null) {
+    final j = msgs.lastIndexWhere((m) => m.quizQuestion?.id == replyTo && m.quizResult == null);
+    if (j >= 0 && quizOptionIndex(msgs[j].quizQuestion!.options, v.correctOption!) >= 0) i = j;
+  }
+  if (i < 0) return null;
+  final m = msgs[i];
+  final pick = m.quizSelection;
+  final opts = m.quizQuestion!.options;
+  final usePick = pick != null && (quizOptionIndex(opts, reply) < 0 && quizOptionLabel(reply, opts.length) == null || reply.trim() == pick.trim());
+  msgs[i] = m.graded(v, usePick ? pick : reply);
+  return i;
+}
+
 /// Which of [msgs] the chat shows: a quiz question asked again later (same id or text) is shown
 /// once, and an assistant message that only repeats a neighbouring quiz question is hidden. The
 /// question being answered right now ([activeId]) always stays visible.
@@ -290,8 +312,13 @@ class ChatController extends ChangeNotifier {
           ..mode = null
           ..quizReplyTo = null;
       }
-      if (run != _run) return;
-      if (replyTo != null && quiz?.q.id == replyTo) quiz = null; // the user switched chat meanwhile: this answer is dropped
+      if (run != _run) {
+        // The user left this chat (new chat / another chat) while the verdict was on its way:
+        // still color the question it belongs to, so reopening the chat shows green / red.
+        if (quizChats.contains(c.id) && a.quizResult != null) await _lateVerdict(c, a.quizResult!, question, replyTo);
+        return;
+      }
+      if (replyTo != null && quiz?.q.id == replyTo) quiz = null;
       final known = <int>[
         for (final id in a.cited)
           if (Retriever.I.praman(id) != null) id,
@@ -303,9 +330,9 @@ class ChatController extends ChangeNotifier {
       final repeated = candidate != null && c.messages.any((m) => m.quizQuestion?.id == candidate.id || (m.quizQuestion != null && normalizeQuizText(m.quizQuestion!.text) == normalizeQuizText(candidate.text)));
       final nq = repeated ? null : candidate;
       final verdict = a.quizResult;
-      if (inQuiz && replyTo != null && verdict != null && verdict.questionId == replyTo) {
-        final i = c.messages.lastIndexWhere((m) => m.quizQuestion?.id == replyTo);
-        if (i >= 0) c.messages[i] = c.messages[i].graded(verdict, question);
+      if (inQuiz && verdict != null) {
+        final i = applyQuizVerdict(c.messages, verdict, reply: question, replyTo: replyTo);
+        if (i != null && quiz?.convId == c.id && quiz?.q.id == c.messages[i].quizQuestion!.id) quiz = null;
       }
       var text = sanitizeAiText(a.answer, (id) => names[id], sourceName: (n) => n >= 1 && n <= cands.length ? names[cands[n - 1].id] : null);
       if (candidate != null) text = stripNextQuestionTail(text); // the card shows it
@@ -480,8 +507,41 @@ class ChatController extends ChangeNotifier {
     return ok;
   }
 
-  /// Taps an option of the server's quiz question (sent with `quiz_reply_to`).
-  Future<bool> answerQuiz(String option) => send(option);
+  /// Taps an option of the server's quiz question (sent with `quiz_reply_to`). The pick is kept
+  /// on the question message at once (and saved), so the verdict colors the right card even if
+  /// the reply text is changed, the widget is rebuilt or the chat is reloaded.
+  Future<bool> answerQuiz(String option) async {
+    if (sending) return false;
+    final c = current, q = quiz;
+    if (c != null && q != null && q.convId == c.id) {
+      final i = c.messages.lastIndexWhere((m) => m.quizQuestion?.id == q.q.id && m.quizResult == null);
+      if (i >= 0) c.messages[i] = c.messages[i].picked(option);
+    }
+    return send(option);
+  }
+
+  /// A verdict that came back after the user left the chat: grade its question in the saved chat
+  /// (and in the open copy of that chat, if it was reopened), and keep the explanation when the
+  /// user's reply is still the last message.
+  Future<void> _lateVerdict(Conversation c, QuizResult v, String reply, String? replyTo) async {
+    final open = current?.id == c.id ? current! : null;
+    for (final conv in {c, ?open}) {
+      final i = applyQuizVerdict(conv.messages, v, reply: reply, replyTo: replyTo);
+      if (i == null) continue;
+      final last = conv.messages.last;
+      if (last.isUser && last.text == reply) {
+        conv.messages.add(ChatMsg(role: 'assistant', text: v.feedback, quizResult: v, at: DateTime.now().millisecondsSinceEpoch));
+      }
+      if (identical(conv, open) && quiz?.q.id == conv.messages[i].quizQuestion!.id) quiz = null;
+    }
+    try {
+      await _persist(open ?? c);
+    } catch (_) {}
+    if (open != null) {
+      tick++;
+      notifyListeners();
+    }
+  }
 
   /// "नया प्रश्न": the worker returned no `next_question` (generation failed / old worker):
   /// resend with the mode set.

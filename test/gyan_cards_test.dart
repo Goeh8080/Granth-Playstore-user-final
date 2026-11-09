@@ -46,7 +46,8 @@ void main() {
       final old = QuizResult.fromJson({'question_id': 'q', 'correct': true, 'feedback': ''})!;
       expect((old.correctIndex, old.correctOption, old.selectedIndex), (null, null, null));
       expect(old.toJson().keys, {'question_id', 'correct', 'feedback'}, reason: 'old saved chats stay byte-compatible');
-      expect(QuizResult.fromJson({'question_id': 'q', 'correct_index': 9, 'selected_index': -1})!.correctIndex, isNull);
+      expect(QuizResult.fromJson({'question_id': 'q', 'correct_index': 9, 'selected_index': -1})!.correctIndexIn(_q.options), isNull);
+      expect(QuizResult.fromJson({'question_id': 'q', 'selected_index': -1})!.selectedIndex, isNull);
     });
 
     test('correct option: index, else its text, else the right pick itself', () {

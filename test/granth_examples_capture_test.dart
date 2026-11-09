@@ -46,6 +46,7 @@ void main() {
           'YatraOne': ['YatraOne-Devanagari'],
           'YatraOneLatin': ['YatraOne-Latin'],
           'NotoDevaFull': ['NotoSansDevanagari-Full'],
+            'TiroDevanagari': ['TiroDevanagariSanskrit-Regular'],
         }.entries) {
           final loader = FontLoader(family.key);
           for (final f in family.value) {
@@ -73,7 +74,7 @@ void main() {
       addTearDown(() => t.binding.setSurfaceSize(null));
       final key = GlobalKey();
       for (final mode in ['folders', 'list']) {
-        UiPrefs.I.setCols(Store.kGranthCols, mode == 'folders' ? 2 : 1);
+        UiPrefs.I.setCols(Store.kGranthCols, mode == 'folders' ? 2 : 3);
         await Store.I.setString('granth-view-mode', mode);
         await t.pumpWidget(const SizedBox());
         await t.pumpWidget(
@@ -109,6 +110,19 @@ void main() {
         final first = mode == 'folders'
             ? find.byType(FolderRow).first
             : find.byType(GranthCard).first;
+        if (mode == 'list') {
+          final cards = t
+              .widgetList<GranthCard>(find.byType(GranthCard))
+              .toList();
+          expect(cards.take(3).every((c) => c.cols == 3), true);
+          final positions = [
+            for (var i = 0; i < 3; i++)
+              t.getRect(find.byType(GranthCard).at(i)),
+          ];
+          expect((positions[0].top - positions[2].top).abs(), lessThan(1));
+          expect(positions[1].left, greaterThan(positions[0].right));
+          expect(positions[2].left, greaterThan(positions[1].right));
+        }
         final cropY = ((t.getTopLeft(first).dy - 66).clamp(0, 700) * 2).round();
         await t.runAsync(() async {
           final full =

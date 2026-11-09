@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:granthprabandhan/screens/shelves_screen.dart';
 import 'package:granthprabandhan/screens/granths_screen.dart';
 import 'package:granthprabandhan/state/router.dart';
+import 'package:granthprabandhan/state/ui_prefs.dart';
 import 'package:granthprabandhan/services/storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'helpers.dart';
@@ -16,8 +17,16 @@ void main() {
   setUp(() async {
     await setUpApp();
     await Store.I.remove('granth-view-mode');
+    UiPrefs.I.animations = true;
   });
-  Future<void> boot(WidgetTester t, String route) async {
+
+  Future<void> boot(
+    WidgetTester t,
+    String route, {
+    double scale = 1.3,
+    double height = 640,
+    bool disableAnimations = false,
+  }) async {
     if (Platform.environment['PREVIEW_DIR'] != null) {
       await t.runAsync(() async {
         for (final entry in {
@@ -38,10 +47,15 @@ void main() {
         }
       });
     }
-    await t.binding.setSurfaceSize(const Size(320, 740));
+    await t.binding.setSurfaceSize(Size(320, height));
     addTearDown(() => t.binding.setSurfaceSize(null));
-    t.platformDispatcher.textScaleFactorTestValue = 1.3;
+    t.platformDispatcher.textScaleFactorTestValue = scale;
     addTearDown(t.platformDispatcher.clearTextScaleFactorTestValue);
+    if (disableAnimations) {
+      t.platformDispatcher.accessibilityFeaturesTestValue =
+          FakeAccessibilityFeatures(disableAnimations: true);
+      addTearDown(t.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    }
     await t.pumpWidget(
       RepaintBoundary(
         key: previewKey,
@@ -66,7 +80,9 @@ void main() {
         );
       }
     });
-    await t.pumpAndSettle();
+    // Looping preview tickers: never pumpAndSettle while the chooser is open.
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 50));
   }
 
   Future<void> proof(WidgetTester t, String name) async {
@@ -78,38 +94,42 @@ void main() {
                   as RenderRepaintBoundary)
               .toImage(pixelRatio: 2);
       final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      Directory(dir).createSync(recursive: true);
       File('$dir/$name').writeAsBytesSync(bytes!.buffer.asUint8List());
       image.dispose();
     });
   }
 
+  Future<void> afterChoice(WidgetTester t) async {
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 400));
+    await t.pumpAndSettle();
+  }
+
   testWidgets(
-    'first Granth entry asks once; list survives restart; can switch to folders',
+    'first Granth entry asks once; list survives restart; choice is final',
     (t) async {
+      UiPrefs.I.setCols(Store.kGranthCols, 2);
       await boot(t, '#/granths');
       expect(find.byKey(const ValueKey('granth-view-picker')), findsOneWidget);
+      expect(find.byKey(const ValueKey('granth-view-change')), findsNothing);
+      expect(find.textContaining('दृश्य बदलें'), findsNothing);
       final dir = Platform.environment['PREVIEW_DIR'];
       if (dir != null) {
-        await t.runAsync(() async {
-          final image =
-              await (previewKey.currentContext!.findRenderObject()
-                      as RenderRepaintBoundary)
-                  .toImage(pixelRatio: 2);
-          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-          Directory(dir).createSync(recursive: true);
-          File(
-            '$dir/granth-choice-320dp.png',
-          ).writeAsBytesSync(bytes!.buffer.asUint8List());
-          image.dispose();
-        });
+        await proof(t, 'granth-choice-320dp.png');
       }
-      await t.ensureVisible(find.byKey(const ValueKey('granth-view-list')));
-      await t.pumpAndSettle();
-      await proof(t, 'granth-choice-list-example-320dp.png');
       await t.tap(find.byKey(const ValueKey('granth-view-list')));
-      await t.pumpAndSettle();
+      await afterChoice(t);
       expect(find.byType(GranthCard), findsWidgets);
       expect(Store.I.getString('granth-view-mode'), 'list');
+      expect(
+        UiPrefs.I.granthCols,
+        2,
+        reason: 'preview3×3 must not change the user grid',
+      );
+      expect(find.byKey(const ValueKey('granth-view-change')), findsNothing);
+      expect(find.textContaining('दृश्य बदलें'), findsNothing);
+      await proof(t, 'granth-choice-list-example-320dp.png');
       await t.pumpWidget(const SizedBox());
       await t.runAsync(
         () async => Store.I.initForTest(
@@ -120,21 +140,28 @@ void main() {
       await boot(t, '#/granths');
       expect(find.byKey(const ValueKey('granth-view-picker')), findsNothing);
       expect(find.byType(GranthCard), findsWidgets);
-      await t.tap(find.byKey(const ValueKey('granth-view-change')));
-      await t.pumpAndSettle();
-      await t.ensureVisible(find.byKey(const ValueKey('granth-view-folders')));
-      await t.tap(find.byKey(const ValueKey('granth-view-folders')));
-      await t.pumpAndSettle();
-      expect(Store.I.getString('granth-view-mode'), 'folders');
-      expect(find.byType(FolderRow), findsWidgets);
+      expect(find.byKey(const ValueKey('granth-view-change')), findsNothing);
+      expect(find.textContaining('दृश्य बदलें'), findsNothing);
+      expect(Store.I.getString('granth-view-mode'), 'list');
       expect(t.takeException(), isNull);
     },
   );
+
+  testWidgets('saved choice never re-prompts and has no change control', (t) async {
+    await Store.I.setString('granth-view-mode', 'folders');
+    await boot(t, '#/granths');
+    expect(find.byKey(const ValueKey('granth-view-picker')), findsNothing);
+    expect(find.byKey(const ValueKey('granth-view-change')), findsNothing);
+    expect(find.textContaining('दृश्य बदलें'), findsNothing);
+    expect(find.byType(FolderRow), findsWidgets);
+  });
+
   testWidgets('deep granth links do not trigger first-use choice', (t) async {
     await boot(t, '#/granths?all=1');
     expect(find.byKey(const ValueKey('granth-view-picker')), findsNothing);
     expect(Store.I.getString('granth-view-mode'), isNull);
   });
+
   testWidgets(
     'chooser contains genuine bundled folder and list screenshots with accessible labels',
     (t) async {
@@ -180,4 +207,108 @@ void main() {
       expect(t.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'both animated previews fit side by side without scrolling at320dp and1.3',
+    (t) async {
+      await boot(t, '#/granths');
+      final a = t.getRect(find.byKey(const ValueKey('granth-view-folders'))),
+          b = t.getRect(find.byKey(const ValueKey('granth-view-list')));
+      expect(b.left, greaterThanOrEqualTo(a.right));
+      expect((a.top - b.top).abs(), lessThan(1));
+      expect(a.bottom, lessThanOrEqualTo(640));
+      expect(b.bottom, lessThanOrEqualTo(640));
+      expect(
+        find.byKey(const ValueKey('granth-view-folders')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('granth-view-list')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('granth-view-preview-folders')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('granth-view-preview-list')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('granth-view-picker')),
+          matching: find.byType(Scrollable),
+        ),
+        findsNothing,
+      );
+      await proof(t, 'granth-choice-side-by-side-320dp-1.3.png');
+      expect(t.takeException(), isNull);
+    },
+  );
+
+  for (final scale in [1.0, 2.0]) {
+    testWidgets(
+      'side-by-side chooser fits320dp at text scale $scale without disabling scaling',
+      (t) async {
+        await boot(
+          t,
+          '#/granths',
+          scale: scale,
+          height: scale == 2.0 ? 480 : 640,
+        );
+        final a = t.getRect(find.byKey(const ValueKey('granth-view-folders'))),
+            b = t.getRect(find.byKey(const ValueKey('granth-view-list')));
+        expect((a.top - b.top).abs(), lessThan(1));
+        expect(b.left, greaterThanOrEqualTo(a.right));
+        expect(
+          find.byKey(const ValueKey('granth-view-folders')).hitTestable(),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('granth-view-list')).hitTestable(),
+          findsOneWidget,
+        );
+        expect(t.takeException(), isNull);
+        await proof(t, 'granth-choice-side-by-side-320dp-$scale.png');
+      },
+    );
+  }
+
+  testWidgets('preview animation controllers dispose when chooser closes', (
+    t,
+  ) async {
+    await boot(t, '#/granths');
+    expect(find.byKey(const ValueKey('granth-view-preview-folders')), findsOneWidget);
+    expect(find.byKey(const ValueKey('granth-view-preview-list')), findsOneWidget);
+    final before = t.binding.transientCallbackCount;
+    expect(before, greaterThan(0), reason: 'looping preview tickers should be active');
+    await t.pump(const Duration(milliseconds: 500));
+    await t.tap(find.byKey(const ValueKey('granth-view-folders')));
+    await afterChoice(t);
+    expect(find.byKey(const ValueKey('granth-view-picker')), findsNothing);
+    expect(find.byKey(const ValueKey('granth-view-preview-folders')), findsNothing);
+    expect(find.byKey(const ValueKey('granth-view-preview-list')), findsNothing);
+    expect(t.takeException(), isNull);
+  });
+
+  testWidgets('reduce-motion keeps static previews without looping tickers', (
+    t,
+  ) async {
+    await boot(t, '#/granths', disableAnimations: true);
+    expect(find.byKey(const ValueKey('granth-view-picker')), findsOneWidget);
+    expect(find.byKey(const ValueKey('granth-view-preview-folders')), findsOneWidget);
+    expect(find.byKey(const ValueKey('granth-view-preview-list')), findsOneWidget);
+    // Accessibility reduce-motion: Motion.on is false, so strip controllers stay stopped.
+    final painted = t.widgetList<RawImage>(
+      find.descendant(
+        of: find.byKey(const ValueKey('granth-view-picker')),
+        matching: find.byType(RawImage),
+      ),
+    );
+    expect(painted.where((i) => i.image != null).length, 2);
+    await t.tap(find.byKey(const ValueKey('granth-view-list')));
+    await afterChoice(t);
+    expect(Store.I.getString('granth-view-mode'), 'list');
+    expect(t.takeException(), isNull);
+  });
 }

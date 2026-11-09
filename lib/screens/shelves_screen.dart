@@ -6,6 +6,7 @@ import '../services/catalog_store.dart';
 import '../services/storage.dart';
 import '../services/search.dart';
 import '../state/ui_prefs.dart';
+import '../state/motion.dart';
 import '../services/shelves.dart';
 import '../state/places.dart';
 import '../state/router.dart';
@@ -331,7 +332,11 @@ class _FolderScreenState extends State<_FolderScreen> with LivePanel {
 
 const granthViewKey = 'granth-view-mode';
 
+/// Intrinsic screenshot aspect for the bundled real previews (780×812).
+const double _kPreviewAspect = 780 / 812;
+
 /// Only the root Granth section asks this, never dashboard or a deep link.
+/// Choice is once-only and final: there is no user-facing "दृश्य बदलें" control.
 class _RootGranths extends StatefulWidget {
   const _RootGranths();
   @override
@@ -344,7 +349,9 @@ class _RootGranthsState extends State<_RootGranths> {
   void initState() {
     super.initState();
     if (Store.I.getString(granthViewKey) == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _choose(); });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _choose();
+      });
     }
   }
 
@@ -357,40 +364,179 @@ class _RootGranthsState extends State<_RootGranths> {
 
   @override
   Widget build(BuildContext context) => SliverMainAxisGroup(slivers: [
-    SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.only(bottom: 10), child: Align(alignment: Alignment.centerLeft,
-      child: Pill(key: const ValueKey('granth-view-change'), icon: _mode == 'folders' ? 'folder-open' : 'library', label: 'दृश्य बदलें', onTap: _choose)))),
-    GranthsPanel(key: ValueKey('root-$_mode'), placeKey: _mode == 'folders' ? 'religions-place' : 'granth-list-place',
-      idle: _mode == 'folders' ? (context, dx, ledger) => _ReligionFolders(dx: dx, ledger: ledger) : null),
-  ]);
+        GranthsPanel(
+          key: ValueKey('root-$_mode'),
+          placeKey: _mode == 'folders' ? 'religions-place' : 'granth-list-place',
+          idle: _mode == 'folders' ? (context, dx, ledger) => _ReligionFolders(dx: dx, ledger: ledger) : null,
+        ),
+      ]);
 }
 
-/// Genuine deterministic GranthApp screenshots; see assets/previews/PROVENANCE.md.
+/// Genuine deterministic GranthApp screenshots with a light looping scroll preview.
+/// See assets/previews/PROVENANCE.md. Shown once on first root Granth entry.
 class GranthViewChoice extends StatelessWidget {
   const GranthViewChoice({super.key});
-  Widget _preview(bool folders) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-    AspectRatio(aspectRatio: 780 / 812, child: ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.asset(
-      folders ? 'assets/previews/granth-folders-example.png' : 'assets/previews/granth-list-example.png',
-      semanticLabel: folders ? 'उदाहरण: असली ऐप का फ़ोल्डर दृश्य' : 'उदाहरण: असली ऐप की ग्रंथ सूची',
-      fit: BoxFit.contain, filterQuality: FilterQuality.medium,
-    ))),
-    const SizedBox(height: 5),
-    Text('ऐप का उदाहरण · आपके ग्रंथ और ग्रिड अलग हो सकते हैं', style: GText.sans(size: 11, color: GColors.muted, height: 1.35)),
-  ]);
-  Widget _option(BuildContext context, String mode, String title, String hint) => Padding(padding: const EdgeInsets.only(top: 12), child: Pressable(
-    key: ValueKey('granth-view-$mode'), onTap: () => Navigator.pop(context, mode),
-    child: GCard(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-      _preview(mode == 'folders'), const SizedBox(height: 8), Text(title, style: GText.sans(size: 18, weight: FontWeight.w600, color: GColors.maroon, height: 1.35)),
-      Text(hint, style: GText.sans(size: 13, color: GColors.muted)),
-    ])),
-  ));
+
+  double _previewHeight(BuildContext context, {required bool large}) {
+    final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
+    final h = MediaQuery.sizeOf(context).height;
+    if (large) return (h * .10).clamp(40.0, 64.0);
+    return (h * .18 / (scale > 1.3 ? scale / 1.3 : 1)).clamp(56.0, 132.0);
+  }
+
+  Widget _option(BuildContext context, String mode, String title, String hint, bool large, double imageHeight) {
+    final folders = mode == 'folders';
+    return Pressable(
+      key: ValueKey('granth-view-$mode'),
+      onTap: () => Navigator.pop(context, mode),
+      child: GCard(
+        padding: EdgeInsets.all(large ? 6 : 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _PreviewStrip(
+              key: ValueKey('granth-view-preview-$mode'),
+              asset: folders ? 'assets/previews/granth-folders-example.png' : 'assets/previews/granth-list-example.png',
+              semanticLabel: folders ? 'उदाहरण: असली ऐप का फ़ोल्डर दृश्य' : 'उदाहरण: सभी ग्रंथ का असली 3×3 ग्रिड',
+              height: imageHeight,
+              duration: folders ? const Duration(seconds: 7) : const Duration(seconds: 9),
+            ),
+            SizedBox(height: large ? 4 : 8),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              maxLines: large ? 1 : 2,
+              overflow: TextOverflow.ellipsis,
+              style: GText.sans(size: large ? 13 : 15.5, weight: FontWeight.w600, color: GColors.maroon, height: 1.2),
+            ),
+            if (!large) Text(hint, textAlign: TextAlign.center, style: GText.sans(size: 11, color: GColors.muted, height: 1.3)),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) => SheetCard(key: const ValueKey('granth-view-picker'), children: [
-    Row(children: [
-      Expanded(child: Text('आप ग्रंथ कैसे देखना चाहेंगे', softWrap: true, style: GText.sans(size: 19, weight: FontWeight.w600, color: GColors.maroon, height: 1.35, letterSpacing: 0))),
-      IconButton(tooltip: 'पीछे', onPressed: () => Navigator.pop(context), icon: const GIcon('x', size: 18)),
-    ]),
-    _option(context, 'folders', 'फ़ोल्डर में', 'वेद, पुराण और श्रेणियों के अनुसार खोलें'),
-    _option(context, 'list', 'एक सूची में', 'सभी ग्रंथ एक जगह; ग्रिड अलग से चुन सकते हैं'),
-    const SizedBox(height: 8), Text('बाद में “दृश्य बदलें” से बदल सकते हैं।', style: GText.sans(size: 12, color: GColors.muted)),
-  ]);
+  Widget build(BuildContext context) {
+    final large = MediaQuery.textScalerOf(context).scale(16) > 24;
+    final imageHeight = _previewHeight(context, large: large);
+    return SheetCard(key: const ValueKey('granth-view-picker'), scroll: false, children: [
+      Row(children: [
+        Expanded(
+          child: Text(
+            large ? 'ग्रंथ का दृश्य' : 'आप ग्रंथ कैसे देखना चाहेंगे',
+            softWrap: true,
+            maxLines: large ? 1 : 2,
+            overflow: TextOverflow.ellipsis,
+            style: GText.sans(size: large ? 15 : 18, weight: FontWeight.w600, color: GColors.maroon, height: 1.2, letterSpacing: 0),
+          ),
+        ),
+        IconButton(tooltip: 'पीछे', onPressed: () => Navigator.pop(context), icon: const GIcon('x', size: 18)),
+      ]),
+      SizedBox(height: large ? 6 : 12),
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: _option(context, 'folders', 'फ़ोल्डर', 'श्रेणियों में', large, imageHeight)),
+        const SizedBox(width: 8),
+        Expanded(child: _option(context, 'list', 'सभी ग्रंथ', 'एक जगह', large, imageHeight)),
+      ]),
+      SizedBox(height: large ? 4 : 10),
+      Text(
+        large ? 'एक बार · अंतिम' : 'उदाहरण चलते रहेंगे · एक बार चुनें · बाद में नहीं बदलेगा',
+        textAlign: TextAlign.center,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: GText.sans(size: large ? 10 : 11, color: GColors.muted, height: 1.2),
+      ),
+    ]);
+  }
+}
+
+/// Lightweight looping pan over a real screenshot strip (no video dependency).
+/// Stops its controller on dispose; respects reduce-motion / एनिमेशन कम.
+class _PreviewStrip extends StatefulWidget {
+  const _PreviewStrip({
+    super.key,
+    required this.asset,
+    required this.semanticLabel,
+    required this.height,
+    required this.duration,
+  });
+  final String asset;
+  final String semanticLabel;
+  final double height;
+  final Duration duration;
+
+  @override
+  State<_PreviewStrip> createState() => _PreviewStripState();
+}
+
+class _PreviewStripState extends State<_PreviewStrip> with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+  bool _motion = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(vsync: this, duration: widget.duration);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final on = Motion.on(context);
+    if (on == _motion && (_c.isAnimating || !on)) return;
+    _motion = on;
+    if (on) {
+      if (!_c.isAnimating) _c.repeat(reverse: true);
+    } else {
+      _c.stop();
+      _c.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: widget.height,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: AnimatedBuilder(
+          animation: _c,
+          builder: (context, child) {
+            // Zoom past the clip so a real vertical pan reads like a short looping scroll video.
+            return LayoutBuilder(builder: (context, box) {
+              const zoom = 1.7;
+              final stripW = box.maxWidth * zoom;
+              final stripH = stripW / _kPreviewAspect;
+              final maxY = (stripH - widget.height).clamp(0.0, double.infinity);
+              final maxX = (stripW - box.maxWidth).clamp(0.0, double.infinity);
+              final t = _motion ? _c.value : 0.0;
+              return Stack(clipBehavior: Clip.hardEdge, children: [
+                Positioned(
+                  top: -maxY * t,
+                  left: -maxX * 0.35 * t,
+                  width: stripW,
+                  height: stripH,
+                  child: child!,
+                ),
+              ]);
+            });
+          },
+          child: Image.asset(
+            widget.asset,
+            semanticLabel: widget.semanticLabel,
+            fit: BoxFit.fill,
+            filterQuality: FilterQuality.medium,
+          ),
+        ),
+      ),
+    );
+  }
 }

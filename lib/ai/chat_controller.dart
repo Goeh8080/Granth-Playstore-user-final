@@ -510,14 +510,32 @@ class ChatController extends ChangeNotifier {
   /// Taps an option of the server's quiz question (sent with `quiz_reply_to`). The pick is kept
   /// on the question message at once (and saved), so the verdict colors the right card even if
   /// the reply text is changed, the widget is rebuilt or the chat is reloaded.
-  Future<bool> answerQuiz(String option) async {
+  ///
+  /// [questionId] is the tapped card's own id: an older, still-unanswered card of this chat
+  /// becomes the open question, so `quiz_reply_to` (and a retry) carries THAT id, not the newest.
+  Future<bool> answerQuiz(String option, {String? questionId}) async {
     if (sending) return false;
-    final c = current, q = quiz;
+    final c = current;
+    if (c != null && questionId != null) {
+      final i = c.messages.lastIndexWhere((m) => m.quizQuestion?.id == questionId);
+      if (i < 0 || c.messages[i].quizResult != null) return false; // answered cards stay closed
+      quizChats.add(c.id);
+      quiz = (convId: c.id, q: c.messages[i].quizQuestion!);
+    }
+    final q = quiz;
     if (c != null && q != null && q.convId == c.id) {
       final i = c.messages.lastIndexWhere((m) => m.quizQuestion?.id == q.q.id && m.quizResult == null);
       if (i >= 0) c.messages[i] = c.messages[i].picked(option);
     }
     return send(option);
+  }
+
+  /// Whether a quiz card in chat [chatId] takes a tap: this chat, no verdict yet, nothing on its
+  /// way, and either the open question or a worker id (16 hex) the worker can still grade.
+  bool canAnswerCard(String chatId, ChatMsg m) {
+    final q = m.quizQuestion;
+    if (q == null || m.quizResult != null || sending || current?.id != chatId) return false;
+    return (quiz?.convId == chatId && quiz?.q.id == q.id) || RegExp(r'^[a-f0-9]{16}$').hasMatch(q.id);
   }
 
   /// A verdict that came back after the user left the chat: grade its question in the saved chat

@@ -553,7 +553,7 @@ class _AnswerBubbleState extends State<AnswerBubble> {
                   if (msg.quizQuestion != null) ...[
                     const SizedBox(height: 10),
                     QuizOptions(question: msg.quizQuestion!, selected: msg.quizSelection, result: msg.quizResult,
-                      onAnswer: widget.chatId == ChatController.I.quiz?.convId && msg.quizQuestion!.id == ChatController.I.quiz?.q.id && !ChatController.I.sending ? ChatController.I.answerQuiz : null),
+                      onAnswer: ChatController.I.canAnswerCard(widget.chatId, msg) ? (o) => ChatController.I.answerQuiz(o, questionId: msg.quizQuestion!.id) : null),
                   ],
                   if (_shownRefs.isNotEmpty) ...[
                     const SizedBox(height: 12),
@@ -1371,7 +1371,8 @@ class QuizOptions extends StatelessWidget {
               ? (sel == i ? 'picked' : null)
               : i == right
               ? 'right'
-              : r.correct == false && (right != null || sel == i)
+              // Pick unknown (free-text answer): only the right option is painted, nothing red.
+              : r.correct == false && (sel == i || (right != null && sel != null))
               ? 'wrong'
               : null;
           final (bg, line, fg) = switch (tone) {

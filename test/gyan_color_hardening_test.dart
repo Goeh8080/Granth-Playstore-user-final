@@ -27,6 +27,7 @@ class HoldClient extends AiClient {
   Future<AiAnswer> ask(String question, List<AiTurn> history, List<Candidate> candidates) async {
     replyTo.add(quizReplyTo);
     final r = script.removeAt(0);
+    if (r is AiException) throw r;
     return r is Completer<AiAnswer> ? r.future : r as AiAnswer;
   }
 }
@@ -177,6 +178,70 @@ void main() {
       await c.answerQuiz('1500 ई.');
       final q = _question((await store.load(id))!.messages);
       expect((q.quizSelection, q.quizResult!.correctIndex, q.quizResult!.correctOption, q.quizResult!.selectedIndex), ('1500 ई.', 0, '1398 ई.', 1));
+    });
+  });
+
+  group('Tatv Ai review (w12)', () {
+    const id2 = 'aaaaaaaaaaaaaaaa';
+    const q2 = QuizQuestion(id: id2, text: 'दूसरा प्रश्न?', options: ['क', 'ख', 'ग', 'घ']);
+    // q1 still open, then the worker sends q2 without a verdict: two unanswered cards.
+    Future<(ChatController, HoldClient)> twoCards(List<Object> script) async {
+      final (c, _) = await _started([const AiAnswer(answer: '', cited: [], provider: 'p', nextQuestion: q2), ...script]);
+      await c.send('नया प्रश्न');
+      expect(c.quiz?.q.id, id2);
+      expect(c.messages.where((m) => m.quizQuestion != null && m.quizResult == null).length, 2);
+      return (c, c.client as HoldClient);
+    }
+
+    test('1) verdict with no quiz_reply_to goes to the card named by question_id (older card)', () async {
+      final (c, hc) = await twoCards([_verdict(si: null)]);
+      c.quiz = null;
+      await c.send('1398');
+      expect(hc.replyTo.last, isNull);
+      expect(_question(c.messages).quizResult!.correctIndex, 0);
+      expect(c.messages.lastWhere((m) => m.quizQuestion?.id == id2).quizResult, isNull, reason: 'newest card untouched');
+    });
+
+    test('2) tapping an older unanswered card sends ITS id as quiz_reply_to; answered cards stay closed', () async {
+      final (c, hc) = await twoCards([_verdict()]);
+      final chat = c.current!.id;
+      expect(c.canAnswerCard(chat, _question(c.messages)), isTrue);
+      expect(await c.answerQuiz('1500 ई.', questionId: _id), isTrue);
+      expect(hc.replyTo.last, _id, reason: 'not the newest quiz.q.id ($id2)');
+      final q1 = _question(c.messages);
+      expect((q1.quizSelection, q1.quizResult!.correctIndex), ('1500 ई.', 0));
+      final card2 = c.messages.lastWhere((m) => m.quizQuestion?.id == id2);
+      expect(card2.quizResult, isNull);
+      expect(c.canAnswerCard(chat, card2), isTrue, reason: 'the newer card can still be answered');
+      expect(c.canAnswerCard(chat, q1), isFalse);
+      final asks = hc.replyTo.length;
+      expect(await c.answerQuiz('1440 ई.', questionId: _id), isFalse);
+      expect(hc.replyTo.length, asks, reason: 'nothing sent for an answered card');
+      expect(c.canAnswerCard('other-chat', card2), isFalse);
+    });
+
+    test('2) a retry after an error still replies to the tapped card', () async {
+      final (c, hc) = await twoCards([const AiException(AiFailure.unavailable, 'x'), _verdict()]);
+      await c.answerQuiz('1500 ई.', questionId: _id);
+      expect(c.error, isNotNull);
+      await c.retry();
+      expect(hc.replyTo.sublist(hc.replyTo.length - 2), [_id, _id]);
+      expect(_question(c.messages).quizResult, isNotNull);
+    });
+
+    testWidgets('3) free-text answer (selected_index null): right option green, nothing red', (t) async {
+      await t.pumpWidget(MaterialApp(home: Scaffold(body: QuizOptions(question: _q, selected: 'मुझे नहीं पता',
+        result: const QuizResult(questionId: _id, correct: false, correctIndex: 0, correctOption: '1398 ई.')))));
+      await t.pumpAndSettle();
+      final c = [for (var i = 0; i < 4; i++) (t.widget<Container>(find.descendant(of: find.byKey(ValueKey('quiz-opt-$i')), matching: find.byType(Container)).first).decoration! as BoxDecoration).color];
+      expect(c[0], QuizOptions.kGreenBg);
+      expect([c[1], c[2], c[3]], everyElement(Colors.white));
+      expect(find.textContaining('✗'), findsNothing);
+      // right answer typed as text: green on the right option even without selected_index
+      await t.pumpWidget(MaterialApp(home: Scaffold(body: QuizOptions(question: _q, selected: 'चौदह सौ अट्ठानवे',
+        result: const QuizResult(questionId: _id, correct: true, correctIndex: 0)))));
+      await t.pumpAndSettle();
+      expect((t.widget<Container>(find.descendant(of: find.byKey(const ValueKey('quiz-opt-0')), matching: find.byType(Container)).first).decoration! as BoxDecoration).color, QuizOptions.kGreenBg);
     });
   });
 

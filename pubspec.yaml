@@ -42,10 +42,10 @@ flutter:
     - assets/icons/
     - assets/previews/
     - assets/structure/structure.json
-    # Photo Highlighter page + its bundled libraries (assets/store/ is for the Play listing, not the APK)
     - assets/highlighter/
     - assets/highlighter/lib/
     - assets/fonts/NotoSansDevanagari-Full.ttf
+    - shorebird.yaml
   fonts:
     - family: NotoDeva
       fonts:

@@ -177,7 +177,11 @@ DailyPick? _parseDaily(Map<String, dynamic>? d) {
   return DailyPick(id, date);
 }
 
-const _religionIcons = {'om', 'crescent', 'khanda', 'cross', 'dharma', 'jain', 'kabir', 'misc'};
+const _religionIcons = {
+  'om', 'crescent', 'khanda', 'cross', 'dharma', 'jain', 'kabir', 'misc',
+  // icon pack v2 (additive)
+  'swastik', 'trishul', 'kamal', 'deepak', 'shikhar', 'mangal-kalash', 'surya', 'vriksh', 'bahai', 'atash',
+};
 const _groupIcons = {
   'scroll',
   'book-red',
@@ -197,6 +201,9 @@ const _groupIcons = {
   'bijak',
   'shabdavali',
   'misc',
+  // icon pack v2 (additive)
+  'gita', 'ved', 'ramayan', 'mahabharat', 'puran', 'upanishad', 'bhagwat', 'shiv', 'devi', 'hanuman',
+  'satsang', 'bhajan', 'aarti', 'mala', 'kalash', 'mandir', 'sant-vani', 'gyan', 'amritvani', 'sakhi',
 };
 final _slug = RegExp(r'^[a-z0-9][a-z0-9_-]{0,39}$');
 final _gid = RegExp(r'^[0-9]{1,8}$');

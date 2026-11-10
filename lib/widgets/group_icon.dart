@@ -2,6 +2,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'religion_paths.dart';
+import 'religion_symbol.dart' show ReligionSymbolPainter;
+
+part 'group_icon_new.dart';
+
 /// Round 10 — the small coloured icons of the granth groups (omma's look: a rounded cream
 /// tile with a little illustration). Drawn here with [CustomPainter], so they are crisp at
 /// any size, follow no theme on purpose, and add nothing to the APK.
@@ -46,6 +51,10 @@ class GroupIconPainter extends CustomPainter {
     canvas.save();
     canvas.scale(s, s);
     _tile(canvas);
+    if (_paintNew(canvas, name)) {
+      canvas.restore();
+      return;
+    }
     switch (name) {
       case 'scroll':
         _scroll(canvas);

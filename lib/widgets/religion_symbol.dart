@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'common.dart';
 import 'religion_paths.dart';
 
+part 'religion_symbol_new.dart';
+
 /// Round 11 — the symbol of each dharm folder, drawn as vectors (no font glyph, no emoji,
 /// no asset): the same on every phone, crisp at any size, and tinted from the app palette
 /// ([Tone] gradient tile, [toneColors] ink) so it follows every card look.
@@ -82,6 +84,10 @@ class ReligionSymbolPainter extends CustomPainter {
     canvas.scale(s, s);
     // a soft round "glow" behind the symbol, so it sits in the tile instead of floating
     canvas.drawCircle(const Offset(0.5, 0.5), 0.45, Paint()..color = ink.withValues(alpha: 0.13));
+    if (_paintNew(canvas, name)) {
+      canvas.restore();
+      return;
+    }
     switch (name == 'ektara' ? 'kabir' : name) { // Legacy server/admin alias.
       case 'om':
         _glyph(canvas, 'om', kPathOm, 0.68, const Offset(0.5, 0.5));

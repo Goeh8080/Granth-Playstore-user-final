@@ -1,5 +1,5 @@
 /// t361 Every line the Navigator speaks or shows, in the grammar of the selected voice:
-/// a female voice (Monika, Talia, any `gender: female`, and the phone voice) speaks as a woman
+/// a female voice (Sarah, or any `gender: female`, and the phone voice) speaks as a woman
 /// ("खोल रही हूँ", "समझ नहीं पाई"); a male voice as a man ("खोल रहा हूँ", "समझ नहीं पाया").
 library;
 
@@ -57,7 +57,7 @@ class NavPhrases {
 }
 
 /// Gender of the voice that speaks now: phone voice → female; saved server voice → its
-/// gender; nothing saved → the Worker default (Monika, female).
+/// gender; nothing saved → the Worker default (`default_voice_id`, else Sarah, female).
 String navVoiceGender() {
   final v = navSavedVoice() ?? navDefaultVoice() ?? kNavDefaultVoices.first.id;
   if (v == kPhoneVoice) return 'female';

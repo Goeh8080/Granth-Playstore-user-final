@@ -816,13 +816,12 @@ class NavVoiceOption {
   int get hashCode => Object.hash(id, name, gender);
 }
 
-/// Built-in choices = the Worker's `/tts/voices` allow-list (w13 contract; Monika is the
-/// server default). Used offline / until `/tts/voices` or `ui.navigator_voices` answers.
+/// Built-in fallback = the Worker's free-plan defaults (Sarah female, George male).
+/// The picker prefers `GET /tts/voices` (list + `default_voice_id`); this list is used
+/// only offline / until that answer (or `ui.navigator_voices`) arrives.
 const List<NavVoiceOption> kNavDefaultVoices = [
-  NavVoiceOption(id: 'kvQSb3naDTi3sgHwwBC1', name: 'Monika', gender: 'female'),
-  NavVoiceOption(id: 'm5qndnI7u4OAdXhH0Mr5', name: 'Krishna', gender: 'male'),
-  NavVoiceOption(id: 'OZ0L6eISlOejga3XjDFt', name: 'Talia', gender: 'female'),
-  NavVoiceOption(id: 'fnYMz3F5gMEDGMWcH1ex', name: 'Finley', gender: 'male'),
+  NavVoiceOption(id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', gender: 'female'),
+  NavVoiceOption(id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', gender: 'male'),
 ];
 
 /// An https base URL (no trailing slash, ≤ 200 chars) or null.

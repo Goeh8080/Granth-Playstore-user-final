@@ -52,6 +52,7 @@ TtsFail ttsFailFor(int? status) => switch (status) {
       200 => TtsFail.badReply,
       404 || 405 || 501 => TtsFail.notDeployed, // prod without /tts yet
       503 => TtsFail.unavailable, // tts_unavailable: no key / ElevenLabs down
+      402 => TtsFail.unavailable, // library voice not on the current (free) plan
       429 => TtsFail.rateLimited,
       400 => TtsFail.badVoice, // unknown voice_id (or bad text)
       _ => TtsFail.rejected,
@@ -343,8 +344,9 @@ class NavSpeaker {
   bool _speaking = false;
 
   /// Speaks [text] in [voiceId] (default: the user's saved choice; [kPhoneVoice] = the
-  /// phone's offline voice). Any server failure (offline, 404 before prod has /tts, 503
-  /// tts_unavailable, 429) → the phone voice if it has one, else silence; never an error.
+  /// phone's offline voice). If a chosen voice returns 400 / 402 / 503, one retry uses
+  /// the Worker's default voice; any further failure (offline, 404 before prod has /tts,
+  /// 503 tts_unavailable, 402 plan, 429) → the phone voice if it has one, else silence.
   Future<bool> say(String text, {String lang = 'hi', String? voiceId}) async {
     final t = text.trim();
     if (t.isEmpty) return false;
@@ -361,10 +363,10 @@ class NavSpeaker {
       var clip = _cache[key];
       if (clip == null) {
         clip = await client.synth(t, lang: lang, voiceId: v);
-        if (clip == null && client.lastFail == TtsFail.badVoice && v != null) {
-          v = null; // the Worker no longer allows this voice: its default instead
+        if (clip == null && v != null && (client.lastFail == TtsFail.badVoice || client.lastFail == TtsFail.unavailable)) {
+          v = null; // chosen voice failed (unknown / 402 plan / 503): Worker default next
           key = '$lang||$t';
-          clip = await client.synth(t, lang: lang);
+          clip = _cache[key] ?? await client.synth(t, lang: lang);
         }
         if (clip == null) {
           final wait = switch (client.lastFail) {

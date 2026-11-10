@@ -46,10 +46,14 @@ class _Worker {
         contentType: 'application/json',
         body: Uint8List.fromList(utf8.encode(jsonEncode({
           'voices': [
+            {'id': 'EXAVITQu4vr4xnSDxMaL', 'name': 'Sarah', 'gender': 'female'},
+            {'id': 'JBFqnCBsd6RMkjVDRZzb', 'name': 'George', 'gender': 'male'},
             {'id': 'kvQSb3naDTi3sgHwwBC1', 'name': 'Monika', 'gender': 'female'},
             {'id': 'm5qndnI7u4OAdXhH0Mr5', 'name': 'Krishna', 'gender': 'male'},
+            {'id': 'OZ0L6eISlOejga3XjDFt', 'name': 'Talia', 'gender': 'female'},
+            {'id': 'fnYMz3F5gMEDGMWcH1ex', 'name': 'Finley', 'gender': 'male'},
           ],
-          'default_voice_id': 'kvQSb3naDTi3sgHwwBC1',
+          'default_voice_id': 'EXAVITQu4vr4xnSDxMaL',
         }))),
         retryAfter: null,
       );
@@ -160,7 +164,7 @@ void main() {
     });
 
     test('503 / 429 / 404 / 401 / HTML / empty / thrown → null, never throws', () async {
-      for (final s in [503, 429, 404, 405, 401, 413, 415, 500]) {
+      for (final s in [503, 402, 429, 404, 405, 401, 413, 415, 500]) {
         final w = _Worker()..status = s;
         final c = w.client();
         expect(await c.synth('हाँ'), isNull, reason: '$s');
@@ -175,7 +179,11 @@ void main() {
     });
 
     test('GET /tts/voices → list + default; saved for the picker; bundled list offline', () async {
-      expect(navServerVoices().map((v) => v.name), ['Monika', 'Krishna', 'Talia', 'Finley'], reason: 'bundled');
+      expect(navServerVoices().map((v) => v.name), ['Sarah', 'George'], reason: 'bundled fallback');
+      expect(kNavDefaultVoices.first.id, 'EXAVITQu4vr4xnSDxMaL');
+      expect(kNavDefaultVoices.first.gender, 'female');
+      expect(kNavDefaultVoices.last.id, 'JBFqnCBsd6RMkjVDRZzb');
+      expect(kNavDefaultVoices.last.gender, 'male');
       expect(navServerVoices().where((v) => v.gender == 'male'), isNotEmpty);
       expect(navServerVoices().where((v) => v.gender == 'female'), isNotEmpty);
       final w = _Worker();
@@ -183,10 +191,12 @@ void main() {
       expect(w.calls.single.method, 'GET');
       expect(w.calls.single.url.toString(), 'https://w.example/tts/voices');
       expect(w.calls.single.headers['X-Granth-Client'], 'granth-app-1');
-      expect(navServerVoices().map((v) => v.id), ['kvQSb3naDTi3sgHwwBC1', 'm5qndnI7u4OAdXhH0Mr5']);
-      expect(navDefaultVoice(), 'kvQSb3naDTi3sgHwwBC1');
+      expect(w.calls.single.headers['User-Agent'], isNotEmpty);
+      expect(navServerVoices().map((v) => v.name), ['Sarah', 'George', 'Monika', 'Krishna', 'Talia', 'Finley']);
+      expect(navDefaultVoice(), 'EXAVITQu4vr4xnSDxMaL', reason: 'server default_voice_id wins');
       expect(await refreshNavVoices((_Worker()..status = 404).client()), isFalse);
-      expect(navServerVoices().length, 2, reason: 'a failed refresh keeps the last list');
+      expect(navServerVoices().length, 6, reason: 'a failed refresh keeps the last list');
+      expect(navDefaultVoice(), 'EXAVITQu4vr4xnSDxMaL');
     });
 
     test('ui.navigator_voices (admin) parsed; bad ids skipped; fallback bundled', () {
@@ -309,6 +319,41 @@ void main() {
       expect(seen, ['gone', null]);
       expect(a.plays.length, 1);
     });
+
+    for (final status in [402, 503]) {
+      test('$status on a chosen voice → retried with the Worker default, then phone TTS if that fails too', () async {
+        final seen = <String?>[];
+        var defaultOk = true;
+        final c = TtsClient(
+          endpoint: 'https://w.example',
+          iid: () => null,
+          uid: () => null,
+          transport: (m, u, h, b, t) async {
+            final j = jsonDecode(utf8.decode(b!)) as Map;
+            seen.add(j['voice_id'] as String?);
+            if (j['voice_id'] != null || !defaultOk) {
+              return (status: status, contentType: 'application/json', body: Uint8List.fromList(utf8.encode('{"error":"x"}')), retryAfter: null);
+            }
+            return (status: 200, contentType: 'audio/mpeg', body: _mp3, retryAfter: null);
+          },
+        );
+        final a = _Audio()..phone = true;
+        expect(await NavSpeaker(client: c, audio: a, voice: () => 'kvQSb3naDTi3sgHwwBC1').say('हाँ'), isTrue);
+        expect(seen, ['kvQSb3naDTi3sgHwwBC1', null]);
+        expect(a.plays.length, 1);
+        expect(a.local, isEmpty);
+
+        seen.clear();
+        a.plays.clear();
+        defaultOk = false;
+        final sp = NavSpeaker(client: c, audio: a, voice: () => 'kvQSb3naDTi3sgHwwBC1');
+        expect(await sp.say('नमस्ते'), isTrue);
+        expect(seen, ['kvQSb3naDTi3sgHwwBC1', null]);
+        expect(a.plays, isEmpty);
+        expect(a.local, ['नमस्ते']);
+        expect(c.lastStatus, status);
+      });
+    }
   });
 
   group('intents → routes', () {
@@ -433,9 +478,9 @@ void main() {
     });
 
     test('saved voice is sent as voice_id', () async {
-      await Store.I.setString(kNavVoiceKey, 'm5qndnI7u4OAdXhH0Mr5');
+      await Store.I.setString(kNavVoiceKey, 'JBFqnCBsd6RMkjVDRZzb'); // George
       await VoiceNavigator.I.handle('settings kholo');
-      expect(w.posts.single.body!['voice_id'], 'm5qndnI7u4OAdXhH0Mr5');
+      expect(w.posts.single.body!['voice_id'], 'JBFqnCBsd6RMkjVDRZzb');
       expect(w.posts.single.body!['text'], 'सेटिंग खोल रहा हूँ');
     });
 
@@ -448,7 +493,7 @@ void main() {
       expect(Toast.serial, toasts);
     });
 
-    test('unknown → says "समझ नहीं पाई" (default voice Monika is female)', () async {
+    test('unknown → says "समझ नहीं पाई" (default voice Sarah is female)', () async {
       await VoiceNavigator.I.handle('pizza order karo');
       expect(VoiceNavigator.I.speaker.said, [NavPhrases.female.unknown]);
     });
@@ -510,18 +555,30 @@ void main() {
       final a = _Audio();
       final speaker = NavSpeaker(client: w.client(), audio: a);
       await tester.pumpWidget(MaterialApp(home: Scaffold(body: NavVoiceSheet(speaker: speaker))));
-      expect(find.text('Monika · महिला'), findsOneWidget);
-      expect(find.text('Krishna · पुरुष'), findsOneWidget);
+      expect(find.text('Sarah · महिला'), findsOneWidget);
+      expect(find.text('George · पुरुष'), findsOneWidget);
       expect(find.byKey(const ValueKey('nav-voice-phone')), findsNothing, reason: 'no phone TTS on this device');
       await tester.runAsync(() async {
-        await tester.tap(find.byKey(const ValueKey('nav-voice-m5qndnI7u4OAdXhH0Mr5')));
+        await tester.tap(find.byKey(const ValueKey('nav-voice-JBFqnCBsd6RMkjVDRZzb')));
         await Future<void>.delayed(const Duration(milliseconds: 50));
       });
       await tester.pump();
-      expect(Store.I.getString(kNavVoiceKey), 'm5qndnI7u4OAdXhH0Mr5');
-      expect(w.posts.single.body!['voice_id'], 'm5qndnI7u4OAdXhH0Mr5');
+      expect(Store.I.getString(kNavVoiceKey), 'JBFqnCBsd6RMkjVDRZzb');
+      expect(w.posts.single.body!['voice_id'], 'JBFqnCBsd6RMkjVDRZzb');
       expect(w.posts.single.body!['text'], NavPhrases.male.preview);
       expect(a.plays.length, 1);
+    });
+
+    testWidgets('after GET /tts/voices the server list and default_voice_id win over the bundled fallback', (tester) async {
+      final w = _Worker();
+      final speaker = NavSpeaker(client: w.client(), audio: _Audio());
+      expect(await refreshNavVoices(speaker.client), isTrue);
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: NavVoiceSheet(speaker: speaker))));
+      for (final name in ['Sarah · महिला', 'George · पुरुष', 'Monika · महिला', 'Krishna · पुरुष', 'Talia · महिला', 'Finley · पुरुष']) {
+        expect(find.text(name), findsOneWidget, reason: name);
+      }
+      expect(navDefaultVoice(), 'EXAVITQu4vr4xnSDxMaL');
+      expect(navCurrentVoice() ?? navDefaultVoice(), 'EXAVITQu4vr4xnSDxMaL');
     });
 
     testWidgets('phone voice offered only when the device has one', (tester) async {

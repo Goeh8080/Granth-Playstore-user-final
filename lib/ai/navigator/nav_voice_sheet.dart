@@ -1,6 +1,7 @@
 /// t352 Navigator voice picker: "awaaz badlo" / "voice change" / "kaunsi awaaz" (or Settings)
-/// opens this sheet. Server voices come from `ui.navigator_voices` (fallback: one male + one
-/// female). "फ़ोन की आवाज़" (offline) is listed only when the phone has a local voice.
+/// opens this sheet. Voices come from `GET /tts/voices` (list + `default_voice_id`); offline
+/// fallback is the bundled Sarah (female, default) + George (male). "फ़ोन की आवाज़" is listed
+/// only when the phone has a local voice.
 /// Tap = save locally + short preview; the choice goes to `/tts` as `voice_id`.
 library;
 

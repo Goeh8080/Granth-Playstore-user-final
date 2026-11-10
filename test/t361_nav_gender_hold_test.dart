@@ -91,16 +91,21 @@ void main() {
       expect(NavPhrases.forGender(' MALE ').gender, NavGender.male);
     });
 
-    test('current(): saved voice decides; nothing saved = Monika (female); phone = female', () async {
+    test('current(): saved voice decides; nothing saved = Sarah (female); phone = female', () async {
       expect(navVoiceGender(), 'female');
-      await Store.I.setString(kNavVoiceKey, 'm5qndnI7u4OAdXhH0Mr5'); // Krishna
+      expect(kNavDefaultVoices.first.name, 'Sarah');
+      await Store.I.setString(kNavVoiceKey, 'JBFqnCBsd6RMkjVDRZzb'); // George
       expect(NavPhrases.current().opening('वेद'), 'वेद खोल रहा हूँ');
-      await Store.I.setString(kNavVoiceKey, 'OZ0L6eISlOejga3XjDFt'); // Talia
+      await Store.I.setString(kNavVoiceKey, 'EXAVITQu4vr4xnSDxMaL'); // Sarah
       expect(NavPhrases.current().unknown, 'समझ नहीं पाई');
-      await Store.I.setString(kNavVoiceKey, 'fnYMz3F5gMEDGMWcH1ex'); // Finley
-      expect(NavPhrases.current().unknown, 'समझ नहीं पाया');
       await Store.I.setString(kNavVoiceKey, kPhoneVoice);
       expect(NavPhrases.current().gender, NavGender.female);
+      // A voice only on the server list still sets gender once GET /tts/voices is cached.
+      await Store.I.setString(kNavVoicesCacheKey, '{"voices":[{"id":"m5qndnI7u4OAdXhH0Mr5","name":"Krishna","gender":"male"},{"id":"OZ0L6eISlOejga3XjDFt","name":"Talia","gender":"female"}],"default_voice_id":"EXAVITQu4vr4xnSDxMaL"}');
+      await Store.I.setString(kNavVoiceKey, 'm5qndnI7u4OAdXhH0Mr5');
+      expect(NavPhrases.current().unknown, 'समझ नहीं पाया');
+      await Store.I.setString(kNavVoiceKey, 'OZ0L6eISlOejga3XjDFt');
+      expect(NavPhrases.current().unknown, 'समझ नहीं पाई');
     });
 
     test('runtime speech + toast follow the voice', () async {
@@ -111,12 +116,12 @@ void main() {
         ..speaker = sp;
       await VoiceNavigator.I.handle('pizza order karo');
       expect(sp.said.last, 'समझ नहीं पाई');
-      await Store.I.setString(kNavVoiceKey, 'm5qndnI7u4OAdXhH0Mr5');
+      await Store.I.setString(kNavVoiceKey, 'JBFqnCBsd6RMkjVDRZzb'); // George
       await VoiceNavigator.I.handle('pizza order karo');
       expect(sp.said.last, 'समझ नहीं पाया');
       await VoiceNavigator.I.handle('settings kholo');
       expect(sp.said.last, 'सेटिंग खोल रहा हूँ');
-      await Store.I.setString(kNavVoiceKey, 'kvQSb3naDTi3sgHwwBC1');
+      await Store.I.setString(kNavVoiceKey, 'EXAVITQu4vr4xnSDxMaL'); // Sarah
       await VoiceNavigator.I.handle('gallery kholo');
       expect(sp.said.last, 'गैलरी खोल रही हूँ');
       AppNav.I.go('#/dashboard');

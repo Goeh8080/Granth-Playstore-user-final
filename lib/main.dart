@@ -68,7 +68,7 @@ void main() {
       }
       try {
         AppNav.onEnterAi = () => ChatController.I.enterFresh();
-        VoiceNavigator.I.attach(); // t304: idle unless the admin + the user turned it on
+        VoiceNavigator.I.attach(appNavigatorKey); // t304: idle unless the admin + the user turned it on
         AppUpdate.I.attach(appNavigatorKey); // t306: admin update alert (optional config key)
         SupportService.uidOf = () => FirebaseBridge.I.uid;
         AppNav.I.restore();

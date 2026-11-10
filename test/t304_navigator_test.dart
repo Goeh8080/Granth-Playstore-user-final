@@ -120,7 +120,7 @@ class _FakeSpeech implements NavSpeech {
   }
 
   @override
-  Future<void> listen({required void Function(String text, bool isFinal) onText, required void Function() onDone, required Duration listenFor, required Duration pauseFor}) async {}
+  Future<void> listen({required void Function(NavHeard heard) onHeard, required void Function(String? error) onDone, required Duration listenFor, required Duration pauseFor, bool command = true}) async {}
   @override
   Future<void> stop() async => listening = false;
 }

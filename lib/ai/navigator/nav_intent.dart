@@ -68,8 +68,59 @@ const Map<String, List<String>> kNavAliases = {
 
 const _wake = r'^(?:(?:hey|hay|hai|he|hi|हे|है|हाय)\s*(?:granth|grant|granth ji|ग्रंथ|ग्रन्थ|tatv|tatva|tattva|tatwa|tatvaa|तत्व|तत्त्व)|तत्व|तत्त्व|tatv|tatva|tattva|tatwa)(?=$|[\s,:!।.?])[\s,:!।.?]*';
 final _wakeRe = RegExp(_wake, unicode: true, caseSensitive: false);
-final _unsafe = RegExp(r'https?:|www\.|[/#?=&<>]|javascript:|\b(?:delete|send|pay|install|execute|admin|openlink|ignore|override)\b|हटाओ|भेजो|भुगतान', unicode: true, caseSensitive: false);
+final _unsafe = RegExp(r'https?:|www\.|[/#=&<>]|\?\S|javascript:|\b(?:delete|send|pay|install|execute|admin|openlink|ignore|override)\b|हटाओ|भेजो|भुगतान', unicode: true, caseSensitive: false);
 final _openWords = RegExp(r'^(?:open|kholo|khol|खोलो|खोल|खोलिए|dikhao|दिखाओ|chalo|चलो|jao|जाओ)\s+|\s+(?:ko\s+|को\s+)?(?:khol|kholo|kholiye|khol do|open|खोल|खोलो|खोलिए|खोल दो|dikhao|दिखाओ|dikha do|par jao|pe jao|पर जाओ|पे जाओ|me jao|में जाओ|chalo|चलो)(?:\s+do|\s+दो)?$', unicode: true, caseSensitive: false);
+
+// ---- Fuzzy wake phrase (noisy rooms, accents, recognizer slips) -----------------------------
+
+/// Greeting part of a wake phrase, as [navKey] keys ("hey" → hei, "हे" → he, "hai", "ae" …).
+const _wakeGreet = {'he', 'hei', 'hai', 'hi', 'hae', 'ae', 'ai', 'e', 'a', 'hallo', 'halo', 'helo', 'ok', 'okei'};
+
+/// Name part, as keys ("granth"/"ग्रंथ"/"ग्रन्थ" → grant, "tatv"/"tatva"/"तत्व" → tatv).
+const _wakeName = ['grant', 'tatv'];
+
+bool _nameLike(String k) => k.length >= 3 && _wakeName.any((n) => k == n || NavCatalog._lev(k, n) <= 1);
+
+/// What follows a wake phrase in [text]: null = no wake phrase; '' = the wake phrase alone.
+/// Exact phrases first ([hasWakePhrase]); then a fuzzy match on the first words, e.g.
+/// "hey grand", "he granth", "हे ग्रन्थ", "a granth", "hey tatwa", "heygranth", "ok tatv".
+/// "granth kholo" (no greeting) is a command, never a wake phrase.
+String? matchWake(String text) {
+  final t = text.trim().toLowerCase();
+  if (t.isEmpty) return null;
+  if (hasWakePhrase(t)) return stripWake(t).replaceFirst(RegExp(r'^(?:ji|जी)(?:\s+|$)', unicode: true), '').trim();
+  final words = t.split(RegExp(r'[\s,:!।.?]+')).where((w) => w.isNotEmpty).toList();
+  if (words.isEmpty) return null;
+  String rest(int n) => words.skip(n).join(' ');
+  final k0 = navKey(words[0]);
+  if (words.length >= 2 && _wakeGreet.contains(k0) && _nameLike(navKey(words[1]))) {
+    // "hey granth ji …"
+    final n = words.length >= 3 && (words[2] == 'ji' || words[2] == 'जी') ? 3 : 2;
+    return rest(n);
+  }
+  // Run together: "heygranth", "हेग्रंथ".
+  for (final g in _wakeGreet) {
+    if (g.length >= 2 && k0.startsWith(g) && _nameLike(k0.substring(g.length))) return rest(1);
+  }
+  return null;
+}
+
+/// The first recognizer alternate that carries a wake phrase, and every alternate's command
+/// part (wake phrase removed, empty ones dropped). Null when none has a wake phrase.
+({List<String> rest})? wakeAcross(List<String> alternates) {
+  var found = false;
+  final rest = <String>[];
+  for (final a in alternates.take(10)) {
+    final r = matchWake(a);
+    if (r == null) continue;
+    found = true;
+    if (r.isNotEmpty && !rest.contains(r)) rest.add(r);
+  }
+  return found ? (rest: rest) : null;
+}
+
+/// Target id of the "change the voice" command.
+const String kNavActionVoice = 'action:voice';
 
 /// True when [text] begins with a complete wake phrase.
 bool hasWakePhrase(String text) => _wakeRe.hasMatch(text.trim().toLowerCase());
@@ -96,6 +147,12 @@ class NavCatalog {
     page('ai', 'तत्त्व AI', ['ai', 'tatv ai', 'chat', 'चैट', 'tatv se pucho', 'gyan charcha', 'ज्ञान चर्चा'], '#/ai');
     page('settings', 'सेटिंग', ['settings', 'setting', 'सेटिंग', 'सेटिंग्स', 'सेटिंग्ज़'], '#/settings');
     page('account', 'अकाउंट', ['account', 'profile', 'अकाउंट', 'प्रोफाइल'], '#/account');
+    // t352: "awaaz badlo" / "voice change" / "kaunsi awaaz" → the voice picker (no route).
+    out.add(const NavTarget(id: kNavActionVoice, kind: 'action', label: 'आवाज़', steps: [], names: [
+      'awaaz badlo', 'awaz badlo', 'aawaz badlo', 'awaaz badal do', 'awaz badal do', 'awaaz change', 'awaz change', 'voice change', 'change voice', 'change the voice',
+      'voice badlo', 'kaunsi awaaz', 'konsi awaz', 'kaun si awaaz', 'kon si awaz', 'awaaz chuno', 'voice', 'awaaz', 'आवाज़ बदलो', 'आवाज बदलो', 'आवाज़ बदल दो', 'आवाज़ बदलें',
+      'कौनसी आवाज़', 'कौन सी आवाज़', 'कौन-सी आवाज़', 'आवाज़ चुनो', 'आवाज़', 'आवाज', 'वॉइस चेंज',
+    ]));
     page('support', 'सहायता', ['support', 'help', 'sahayata', 'सहायता', 'मदद', 'ticket', 'टिकट'], '#/support');
     for (final r in structure.religions) {
       if (!r.visible) continue;
@@ -132,12 +189,29 @@ class NavCatalog {
     return NavCatalog(out);
   }
 
-  static const _kindRank = {'page': 0, 'religion': 1, 'group': 1, 'sub': 1, 'topic': 2, 'granth': 3};
+  static const _kindRank = {'action': 0, 'page': 0, 'religion': 1, 'group': 1, 'sub': 1, 'topic': 2, 'granth': 3};
+
+  /// Best meaning over several recognizer alternates (best first): the first clear intent wins,
+  /// else the first clarification, else the first alternate's unknown. An unsafe reading met before any intent stops the
+  /// search (it never navigates).
+  NavResult interpretAll(List<String> alternates, {List<String>? pending}) {
+    final alts = [for (final a in alternates.take(10)) if (a.trim().isNotEmpty) a];
+    if (alts.isEmpty) return const NavUnknown('empty');
+    NavResult? first, clarify;
+    for (final a in alts) {
+      final r = interpret(a, pending: pending);
+      first ??= r;
+      if (r is NavUnknown && r.reason == 'unsafe') return r;
+      if (r is NavIntent) return r;
+      if (r is NavClarify) clarify ??= r;
+    }
+    return clarify ?? first!;
+  }
 
   /// One step of meaning for [text]: an intent, a short clarification, or unknown.
   NavResult interpret(String text, {List<String>? pending}) {
     if (text.length > 180) return const NavUnknown('too_long');
-    var s = stripWake(text);
+    var s = matchWake(text) ?? text.trim().toLowerCase();
     if (_unsafe.hasMatch(s)) return const NavUnknown('unsafe');
     s = s.replaceAll(RegExp(r'[,!।.?]+'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
     for (var i = 0; i < 2; i++) {
@@ -185,8 +259,10 @@ class NavCatalog {
     if (qj.length >= 6 && kj.contains(qj)) return 0.85;
     final d = _lev(q, k);
     final sim = 1 - d / math.max(q.length, k.length);
-    // Short words need to be nearly exact ("ved" vs "veda").
-    if (math.max(q.length, k.length) <= 4) return d <= 1 ? 0.8 : 0;
+    // Short words need to be nearly exact ("ved" vs "veda"). A one-letter slip is accepted
+    // only when both are 4 letters: 3-letter keys are too close to each other
+    // ("shiv"→siv ≠ sikh→sik, "anya"→ani ≠ ai).
+    if (math.max(q.length, k.length) <= 4) return d <= 1 && q.length >= 4 && k.length >= 4 ? 0.8 : 0;
     return sim;
   }
 

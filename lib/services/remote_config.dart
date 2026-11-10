@@ -68,6 +68,7 @@ class ParsedConfig {
     required this.analyticsEnabled,
     required this.analyticsSample,
     required this.aiEndpoint,
+    this.ttsEndpoint,
     required this.contactsTitle,
     required this.contacts,
     this.uiGrid,
@@ -78,6 +79,7 @@ class ParsedConfig {
     this.uiLoginRequired = false,
     this.uiGranthViewMode,
     this.navigatorEnabled = false,
+    this.navigatorVoices = kNavDefaultVoices,
     this.appUpdate,
     this.trendingTopics = const [],
     this.dailyPraman,
@@ -95,6 +97,9 @@ class ParsedConfig {
   final bool analyticsEnabled;
   final double analyticsSample;
   final String? aiEndpoint;
+
+  /// `endpoints.tts` (t352, optional https base for `/tts` + `/tts/voices`); null → [aiEndpoint].
+  final String? ttsEndpoint;
   final String contactsTitle;
   final List<Contact>? contacts;
 
@@ -124,6 +129,10 @@ class ParsedConfig {
   /// `ui.navigator_enabled` (alias `ui.navigatorEnabled`; legacy `flags.navigator_enabled`) (t304): voice Navigator ("Hey Granth / Hey Tatv"). Off unless the
   /// admin sets exactly `true`; even then each user must opt in (and grant the mic) in Settings.
   final bool navigatorEnabled;
+
+  /// `ui.navigator_voices` (t352, optional): `[{id, name, gender}]` ElevenLabs voices the user may
+  /// pick for the Navigator's spoken replies. Missing / invalid → [kNavDefaultVoices].
+  final List<NavVoiceOption> navigatorVoices;
 
   /// `app_update` (t306, optional): admin-pushed update alert; null = none.
   final AppUpdateInfo? appUpdate;
@@ -381,6 +390,7 @@ ParsedConfig? parseConfig(String text, {int cachedVersion = 0, int appBuild = kB
       final u = Uri.tryParse((ep['ai'] as String).trim());
       if (u != null && u.scheme == 'https' && u.host.isNotEmpty && (ep['ai'] as String).length <= 200) ai = (ep['ai'] as String).trim().replaceAll(RegExp(r'/+$'), '');
     }
+    final tts = parseHttpsBase(ep?['tts']);
     final cp = _map(j['contacts_page']);
     final ct = cp == null ? '' : _title(cp['title']);
     return ParsedConfig(
@@ -399,6 +409,7 @@ ParsedConfig? parseConfig(String text, {int cachedVersion = 0, int appBuild = kB
       analyticsEnabled: f['analytics_enabled'] != false,
       analyticsSample: sample is num ? sample.toDouble().clamp(0.0, 1.0) : 1.0,
       aiEndpoint: ai,
+      ttsEndpoint: tts,
       contactsTitle: ct.isNotEmpty && ct.length <= 60 ? ct : kContactsTitle,
       contacts: parseContacts(j['contacts']),
       uiGrid: _parseGrid(_map(j['ui'])),
@@ -409,6 +420,7 @@ ParsedConfig? parseConfig(String text, {int cachedVersion = 0, int appBuild = kB
       uiLoginRequired: _map(j['ui'])?['login_required'] == true,
       uiGranthViewMode: parseGranthViewMode(_map(j['ui'])),
       navigatorEnabled: parseNavigatorEnabled(_map(j['ui']), f),
+      navigatorVoices: parseNavigatorVoices(_map(j['ui'])),
       appUpdate: parseAppUpdate(j['appUpdate'] ?? j['app_update']),
       trendingTopics: _parseTrending(_map(j['trending'])),
       dailyPraman: _parseDaily(_map(j['daily_praman'])),
@@ -559,6 +571,9 @@ class RemoteConfig extends ChangeNotifier {
   bool analyticsEnabled = true;
   double analyticsSample = 1.0;
   String? aiEndpoint;
+
+  /// Speech base (`endpoints.tts`), null = same as [aiEndpoint].
+  String? ttsEndpoint;
   String contactsTitle = kContactsTitle;
   List<Contact> contacts = kSeedContacts;
 
@@ -583,6 +598,9 @@ class RemoteConfig extends ChangeNotifier {
 
   /// Admin switch for the voice Navigator (default off).
   bool navigatorEnabled = false;
+
+  /// Voices offered in the Navigator voice picker (see [parseNavigatorVoices]).
+  List<NavVoiceOption> navigatorVoices = kNavDefaultVoices;
 
   /// Admin update alert (see app_update.dart).
   AppUpdateInfo? appUpdate;
@@ -702,6 +720,7 @@ class RemoteConfig extends ChangeNotifier {
     analyticsEnabled = p.analyticsEnabled;
     analyticsSample = p.analyticsSample;
     aiEndpoint = p.aiEndpoint;
+    ttsEndpoint = p.ttsEndpoint;
     contactsTitle = p.contactsTitle;
     contacts = p.contacts ?? kSeedContacts;
     final gridChanged = uiGrid != p.uiGrid || !mapEquals(uiGridPages, p.uiGridPages) || !mapEquals(uiGridForce, p.uiGridForce) || uiTaskbar != p.uiTaskbar;
@@ -710,6 +729,7 @@ class RemoteConfig extends ChangeNotifier {
     uiLoginRequired = p.uiLoginRequired;
     uiGranthViewMode = p.uiGranthViewMode;
     navigatorEnabled = p.navigatorEnabled;
+    navigatorVoices = p.navigatorVoices;
     appUpdate = p.appUpdate;
     uiGrid = p.uiGrid;
     uiGridPages = p.uiGridPages;
@@ -752,6 +772,7 @@ class RemoteConfig extends ChangeNotifier {
     analyticsEnabled = true;
     analyticsSample = 1.0;
     aiEndpoint = null;
+    ttsEndpoint = null;
     contactsTitle = kContactsTitle;
     contacts = kSeedContacts;
     uiGrid = null;
@@ -762,6 +783,7 @@ class RemoteConfig extends ChangeNotifier {
     uiLoginRequired = false;
     uiGranthViewMode = null;
     navigatorEnabled = false;
+    navigatorVoices = kNavDefaultVoices;
     appUpdate = null;
     trendingTopics = const [];
     dailyPraman = null;
@@ -771,6 +793,65 @@ class RemoteConfig extends ChangeNotifier {
   }
 }
 
+
+/// One server voice for the Navigator (t352). [id] is sent to `/tts` as `voice_id`; the Worker
+/// keeps the ElevenLabs key and should accept only voices on its own allow-list.
+class NavVoiceOption {
+  const NavVoiceOption({required this.id, required this.name, required this.gender});
+  final String id;
+  final String name;
+
+  /// `male` | `female` | `other`.
+  final String gender;
+  @override
+  bool operator ==(Object other) => other is NavVoiceOption && other.id == id && other.name == name && other.gender == gender;
+  @override
+  int get hashCode => Object.hash(id, name, gender);
+}
+
+/// Built-in choices = the Worker's `/tts/voices` allow-list (w13 contract; Monika is the
+/// server default). Used offline / until `/tts/voices` or `ui.navigator_voices` answers.
+const List<NavVoiceOption> kNavDefaultVoices = [
+  NavVoiceOption(id: 'kvQSb3naDTi3sgHwwBC1', name: 'Monika', gender: 'female'),
+  NavVoiceOption(id: 'm5qndnI7u4OAdXhH0Mr5', name: 'Krishna', gender: 'male'),
+  NavVoiceOption(id: 'OZ0L6eISlOejga3XjDFt', name: 'Talia', gender: 'female'),
+  NavVoiceOption(id: 'fnYMz3F5gMEDGMWcH1ex', name: 'Finley', gender: 'male'),
+];
+
+/// An https base URL (no trailing slash, ≤ 200 chars) or null.
+String? parseHttpsBase(Object? v) {
+  if (v is! String) return null;
+  final t = v.trim();
+  final u = Uri.tryParse(t);
+  if (u == null || u.scheme != 'https' || u.host.isEmpty || t.length > 200) return null;
+  return t.replaceAll(RegExp(r'/+$'), '');
+}
+
+final _voiceId = RegExp(r'^[A-Za-z0-9_-]{1,64}$');
+
+/// `ui.navigator_voices` (alias `ui.navigatorVoices`): list of `{id, name, gender}` (max 8).
+/// Entries with a bad id are skipped; nothing valid → [kNavDefaultVoices].
+List<NavVoiceOption> parseNavigatorVoices(Map<String, dynamic>? ui) => parseVoiceList(ui?['navigator_voices'] ?? ui?['navigatorVoices']) ?? kNavDefaultVoices;
+
+/// `[{id, name, gender}]` → voices (max 8, bad ids skipped); null when nothing valid.
+/// Same shape as the Worker's `GET /tts/voices` `voices`.
+List<NavVoiceOption>? parseVoiceList(Object? v) {
+  if (v is! List) return null;
+  final out = <NavVoiceOption>[];
+  final seen = <String>{};
+  for (final e in v) {
+    if (e is! Map) continue;
+    final id = e['id'] ?? e['voice_id'];
+    if (id is! String || !_voiceId.hasMatch(id.trim()) || !seen.add(id.trim())) continue;
+    final g = '${e['gender'] ?? ''}'.trim().toLowerCase();
+    final gender = g == 'male' || g == 'm' || g == 'पुरुष' ? 'male' : g == 'female' || g == 'f' || g == 'महिला' ? 'female' : 'other';
+    var name = e['name'] is String ? (e['name'] as String).trim() : '';
+    if (name.isEmpty || name.length > 40) name = gender == 'male' ? 'पुरुष आवाज़' : gender == 'female' ? 'महिला आवाज़' : 'आवाज़ ${out.length + 1}';
+    out.add(NavVoiceOption(id: id.trim(), name: name, gender: gender));
+    if (out.length >= 8) break;
+  }
+  return out.isEmpty ? null : out;
+}
 
 /// `ui.navigator_enabled` (snake first, then camel `navigatorEnabled`; `flags.navigator_enabled`
 /// accepted too). On only when exactly `true`; absent → false.

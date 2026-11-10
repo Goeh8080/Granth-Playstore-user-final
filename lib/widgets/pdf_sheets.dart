@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../ai/navigator/nav_voice_sheet.dart' show showNavVoiceSheet;
 import '../ai/navigator/voice_navigator.dart' show VoiceNavigator;
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -842,6 +843,10 @@ class _SettingsState extends State<_Settings> {
                     _block('"Hey Granth" सुनते रहें (सिर्फ़ ऐप खुला हो तब)', [
                       Pill(key: const ValueKey('set-nav-wake-on'), direct: true, label: 'चालू', tone: VoiceNavigator.I.wakeOn ? PillTone.maroon : PillTone.plain, onTap: () => VoiceNavigator.I.setWake(true)),
                       Pill(key: const ValueKey('set-nav-wake-off'), direct: true, label: 'बंद (माइक बटन से)', tone: VoiceNavigator.I.wakeOn ? PillTone.plain : PillTone.maroon, onTap: () => VoiceNavigator.I.setWake(false)),
+                    ]),
+                  if (VoiceNavigator.I.optedIn)
+                    _block('नेविगेटर की आवाज़ (या बोलें "आवाज़ बदलो")', [
+                      Pill(key: const ValueKey('set-nav-voice-pick'), direct: true, label: 'आवाज़ चुनें', tone: PillTone.plain, onTap: () => showNavVoiceSheet(context, speaker: VoiceNavigator.I.speaker)),
                     ]),
                 ],
                 _block('एनिमेशन', [

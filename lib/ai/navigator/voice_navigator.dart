@@ -7,6 +7,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
@@ -18,7 +19,9 @@ import '../../state/router.dart';
 import '../../state/toast.dart';
 import '../../theme/colors.dart';
 import '../../widgets/common.dart';
+import '../../widgets/overlays.dart';
 import 'nav_intent.dart';
+import 'nav_phrases.dart';
 import 'nav_tts.dart';
 import 'nav_voice_sheet.dart';
 
@@ -44,7 +47,6 @@ const Set<String> kNavRetryErrors = {
 
 /// How many times one command is re-asked ("फिर से बोलिए") before giving up.
 const int kNavRetries = 2;
-const String kNavSayAgain = 'फिर से बोलिए';
 
 /// Speech engine seam (tests replace it; the app uses the phone's recognizer).
 abstract class NavSpeech {
@@ -161,6 +163,24 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
   List<String>? _pending;
   Timer? _restart;
 
+  /// Who started the current command window: `hold` (Tatv AI button held), `mic`, `wake`.
+  String listenSource = 'mic';
+
+  /// t361: hold on the Tatv AI button → listen for a command right away (no wake phrase).
+  /// Only with the admin switch on. Not opted in yet → [confirmOptIn] asks kindly first, then
+  /// the mic permission; a "no" or a refused mic does nothing more. Returns true if listening.
+  Future<bool> holdToListen({Future<bool> Function()? confirmOptIn}) async {
+    if (!adminOn || !_foreground || state == NavVoiceState.navigating) return false;
+    if (!optedIn) {
+      final yes = confirmOptIn == null ? true : await confirmOptIn();
+      if (!yes || !await setOptIn(true)) return false;
+    }
+    if (!available) return false;
+    listenSource = 'hold';
+    await listenOnce();
+    return state == NavVoiceState.listening;
+  }
+
   /// Pause between retries (tests set zero).
   Duration retryGap = const Duration(milliseconds: 350);
 
@@ -224,7 +244,7 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
     if (!adminOn) return false;
     _ready = await speech.init();
     await Store.I.setString(kOptIn, _ready ? '1' : '0');
-    if (!_ready) Toast.show('माइक की अनुमति नहीं मिली');
+    if (!_ready) Toast.show(NavPhrases.current().micDenied);
     _sync();
     return _ready;
   }
@@ -242,7 +262,7 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
   /// (up to [kNavRetries] times).
   Future<void> listenOnce({int attempt = 0}) async {
     if (!available || !_foreground || state == NavVoiceState.navigating) return;
-    if (!await _ensure()) return Toast.show('माइक उपलब्ध नहीं');
+    if (!await _ensure()) return Toast.show(NavPhrases.current().micUnavailable);
     _restart?.cancel();
     if (_speaking) await _hush(); // tap while it talks: stop the voice, listen
     if (speech.listening) await speech.stop();
@@ -280,7 +300,7 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
           unawaited(_again(attempt, busy: err == 'error_busy'));
         } else {
           retrying = false;
-          if (err != null && !retryable) Toast.show('माइक से सुनाई नहीं दिया');
+          if (err != null && !retryable) Toast.show(NavPhrases.current().micFailed);
           if (wakeOn) _scheduleWake(const Duration(seconds: 2));
         }
       },
@@ -304,8 +324,9 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _again(int attempt, {bool busy = false}) async {
     retrying = true;
     notifyListeners();
-    Toast.show('फिर से बोलिए');
-    await _say(kNavSayAgain, rearm: false);
+    final p = NavPhrases.current();
+    Toast.show(p.again);
+    await _say(p.again, rearm: false);
     await Future<void>.delayed(busy ? retryGap * 2 : retryGap);
     if (available && _foreground && state != NavVoiceState.navigating) await listenOnce(attempt: attempt + 1);
   }
@@ -356,6 +377,7 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
         // Silence / noise is normal here: no prompt. Repeated hard errors back off a little.
         _wakeErrors = err == null || err == 'error_no_match' || err == 'error_speech_timeout' ? 0 : _wakeErrors + 1;
         if (armed && !acted && state != NavVoiceState.navigating) {
+          listenSource = 'wake';
           listenOnce();
         } else if (!acted) {
           _scheduleWake(Duration(seconds: 3 + 3 * _wakeErrors.clamp(0, 5)));
@@ -391,24 +413,25 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
     switch (r) {
       case NavIntent(:final target) when target.kind == 'action':
         if (target.id == kNavActionVoice) {
-          await _say('आवाज़ चुनिए');
+          await _say(NavPhrases.current().chooseVoice);
           await openVoicePicker();
         }
       case NavIntent(:final target):
-        final voice = _say(navSayOpening(target.label));
+        final voice = _say(NavPhrases.current().opening(target.label));
         await run(target);
         await voice;
       case NavClarify(:final choices):
         _pending = [for (final c in choices) c.id];
         _pendingAt = DateTime.now();
         Toast.show('${r.prompt} ${choices.map((c) => c.label).join(' / ')}');
-        await _say(navSayClarify([for (final c in choices) c.label]));
+        await _say(NavPhrases.current().clarify([for (final c in choices) c.label]));
         // Listen for the answer right away (one-shot); wake mode also accepts it unprefixed.
         if (available && _foreground && !wakeOn && state == NavVoiceState.idle) unawaited(listenOnce());
       case NavUnknown():
         final empty = text.trim().isEmpty;
-        Toast.show(empty ? 'कुछ सुनाई नहीं दिया' : 'समझ नहीं आया: ${text.trim()}');
-        await _say(empty ? kNavSayNothing : kNavSayUnknown);
+        final p = NavPhrases.current();
+        Toast.show(empty ? p.nothing : p.unknownToast(text));
+        await _say(empty ? p.nothing : p.unknown);
     }
     return r;
   }
@@ -624,7 +647,10 @@ class NavMicButton extends StatelessWidget {
           final active = v.state == NavVoiceState.listening || v.state == NavVoiceState.navigating;
           return Pressable(
             key: const ValueKey('nav-mic'),
-            onTap: v.listenOnce,
+            onTap: () {
+              v.listenSource = 'mic';
+              v.listenOnce();
+            },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 220),
               width: 48,
@@ -640,5 +666,106 @@ class NavMicButton extends StatelessWidget {
             ),
           );
         },
+      );
+}
+
+/// t361: hold (long-press) on a Tatv AI button → the Navigator listens for a command right
+/// away. A normal tap still reaches [child] (opens Tatv AI) exactly as before. Off (no
+/// gesture at all) unless the admin switched the Navigator on.
+class NavHoldTrigger extends StatelessWidget {
+  const NavHoldTrigger({super.key, required this.id, required this.child, this.confirmOptIn});
+  final String id;
+  final Widget child;
+
+  /// Asks before turning the Navigator on (tests replace it). Default: a small sheet.
+  final Future<bool> Function(BuildContext context)? confirmOptIn;
+
+  Future<void> _hold(BuildContext context) async {
+    HapticFeedback.lightImpact();
+    await VoiceNavigator.I.holdToListen(confirmOptIn: () => (confirmOptIn ?? _askOptIn)(context));
+  }
+
+  static Future<bool> _askOptIn(BuildContext context) async {
+    if (!context.mounted) return false;
+    final r = await showPop<bool>(
+      context,
+      (ctx) => SheetCard(
+        maxWidth: 400,
+        children: [
+          Text('आवाज़ से खोलें?', style: GText.display(size: 22, color: GColors.maroon, height: 1.3)),
+          const SizedBox(height: 6),
+          Text('Tatv AI बटन दबाकर रखें और बोलें, जैसे "वेद खोलो"। इसके लिए माइक की अनुमति चाहिए — माइक सिर्फ़ तभी सुनता है जब आप बटन दबाकर रखें या चालू करें।', style: GText.sans(size: 14.5, color: GColors.brown, height: 1.5)),
+          const SizedBox(height: 14),
+          SheetButton(key: const ValueKey('nav-hold-yes'), label: 'हाँ, चालू करें', primary: true, onTap: () => Navigator.pop(ctx, true)),
+          const SizedBox(height: 8),
+          SheetButton(key: const ValueKey('nav-hold-no'), label: 'अभी नहीं', onTap: () => Navigator.pop(ctx, false)),
+        ],
+      ),
+    );
+    return r == true;
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: Listenable.merge([RemoteConfig.I, VoiceNavigator.I]),
+        builder: (context, _) {
+          final v = VoiceNavigator.I;
+          final on = v.adminOn;
+          final listening = on && v.state == NavVoiceState.listening && v.listenSource == 'hold';
+          return GestureDetector(
+            key: ValueKey('nav-hold-$id'),
+            behavior: HitTestBehavior.deferToChild,
+            onLongPress: on ? () => _hold(context) : null,
+            child: Stack(clipBehavior: Clip.none, alignment: Alignment.center, children: [
+              child,
+              if (listening) const Positioned.fill(child: IgnorePointer(child: _ListeningRing())),
+              if (listening)
+                Positioned(
+                  bottom: 0,
+                  child: IgnorePointer(
+                    child: FractionalTranslation(
+                      translation: const Offset(0, -1.6),
+                      child: Container(
+                        key: const ValueKey('nav-hold-listening'),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(color: GColors.maroon, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: GColors.shadow(0.2), blurRadius: 8, offset: const Offset(0, 3))]),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          const Icon(Icons.graphic_eq, size: 16, color: GColors.paper),
+                          const SizedBox(width: 4),
+                          Text(v.retrying ? NavPhrases.current().again : NavPhrases.current().listening, style: GText.sans(size: 12.5, weight: FontWeight.w700, color: GColors.paper)),
+                        ]),
+                      ),
+                    ),
+                  ),
+                ),
+            ]),
+          );
+        },
+      );
+}
+
+class _ListeningRing extends StatefulWidget {
+  const _ListeningRing();
+  @override
+  State<_ListeningRing> createState() => _ListeningRingState();
+}
+
+class _ListeningRingState extends State<_ListeningRing> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true);
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _c,
+        builder: (context, _) => DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(40),
+            border: Border.all(color: GColors.saffron.withValues(alpha: 0.5 + 0.5 * _c.value), width: 2 + 2 * _c.value),
+          ),
+        ),
       );
 }

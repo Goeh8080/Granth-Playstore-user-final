@@ -407,18 +407,6 @@ class NavSpeaker {
   }
 }
 
-/// Short spoken line for an opened target: "वेद खोल रहा हूँ".
-String navSayOpening(String label) {
-  var l = label.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
-  if (l.runes.length > 60) l = String.fromCharCodes(l.runes.take(60));
-  return l.isEmpty ? 'खोल रहा हूँ' : '$l खोल रहा हूँ';
-}
-
-/// "कौन-सा खोलूँ? वेद या वेद ग्रंथ"
-String navSayClarify(List<String> labels) => 'कौन-सा खोलूँ? ${labels.take(3).map((l) => l.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim()).join(' या ')}';
-
-const String kNavSayUnknown = 'समझ नहीं आया';
-const String kNavSayNothing = 'कुछ सुनाई नहीं दिया';
 
 /// Saved voice choice (Store key); [kPhoneVoice] = the phone's offline voice.
 const String kNavVoiceKey = 'granth-nav-voice-id';

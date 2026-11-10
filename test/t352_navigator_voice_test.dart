@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:granthprabandhan/ai/navigator/nav_intent.dart';
+import 'package:granthprabandhan/ai/navigator/nav_phrases.dart';
 import 'package:granthprabandhan/ai/navigator/nav_tts.dart';
 import 'package:granthprabandhan/ai/navigator/nav_voice_sheet.dart';
 import 'package:granthprabandhan/ai/navigator/voice_navigator.dart';
@@ -419,13 +420,13 @@ void main() {
       AppNav.I.go('#/dashboard');
     });
 
-    test('"Hey Granth ved khol" → folders step by step + says "वेद खोल रहा हूँ" (mic off)', () async {
+    test('"Hey Granth ved khol" → folders step by step + says "वेद खोल रही हूँ" (mic off)', () async {
       sp.listening = true;
       final r = await VoiceNavigator.I.handle('Hey Granth ved khol');
       expect(r, isA<NavIntent>());
       expect(seen.toSet().toList(), ['#/granths', '#/granths?r=hindu', '#/granths?r=hindu&g=ved']);
-      expect(VoiceNavigator.I.speaker.said, ['वेद खोल रहा हूँ']);
-      expect(w.posts.single.body!['text'], 'वेद खोल रहा हूँ');
+      expect(VoiceNavigator.I.speaker.said, ['वेद खोल रही हूँ']);
+      expect(w.posts.single.body!['text'], 'वेद खोल रही हूँ');
       expect(audio.plays, [400]);
       expect(audio.micOnWhilePlaying, isFalse);
       expect(VoiceNavigator.I.speaking, isFalse);
@@ -447,9 +448,9 @@ void main() {
       expect(Toast.serial, toasts);
     });
 
-    test('unknown → says "समझ नहीं आया"', () async {
+    test('unknown → says "समझ नहीं पाई" (default voice Monika is female)', () async {
       await VoiceNavigator.I.handle('pizza order karo');
-      expect(VoiceNavigator.I.speaker.said, [kNavSayUnknown]);
+      expect(VoiceNavigator.I.speaker.said, [NavPhrases.female.unknown]);
     });
 
     test('"awaaz badlo" opens the voice picker', () async {
@@ -467,7 +468,7 @@ void main() {
       sp.onDone!('error_no_match');
       await pumpEventQueue();
       expect(sp.listens, 2);
-      expect(VoiceNavigator.I.speaker.said, [kNavSayAgain]);
+      expect(VoiceNavigator.I.speaker.said, [NavPhrases.female.again]);
       expect(Toast.message.value, 'फिर से बोलिए');
       sp.onDone!('error_network');
       await pumpEventQueue();
@@ -519,7 +520,7 @@ void main() {
       await tester.pump();
       expect(Store.I.getString(kNavVoiceKey), 'm5qndnI7u4OAdXhH0Mr5');
       expect(w.posts.single.body!['voice_id'], 'm5qndnI7u4OAdXhH0Mr5');
-      expect(w.posts.single.body!['text'], kNavVoicePreview);
+      expect(w.posts.single.body!['text'], NavPhrases.male.preview);
       expect(a.plays.length, 1);
     });
 

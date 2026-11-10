@@ -395,7 +395,10 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
                       Positioned(
                         right: 16,
                         bottom: 36 + tabsH,
-                        child: Pressable(
+                        // t361: hold = Navigator listens (admin switch on); tap opens Tatv AI.
+                        child: NavHoldTrigger(
+                          id: 'fab',
+                          child: Pressable(
                           key: const ValueKey('ask-ai-fab'),
                           onTap: () => AppNav.I.openLink('#/ai'),
                           child: Container(
@@ -417,6 +420,7 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
                               ],
                             ),
                           ),
+                        ),
                         ),
                       ),
                     // t304 Navigator voice: mic (admin + user opt-in only) and the touch ripple layer.
@@ -971,7 +975,7 @@ class BottomTabs extends StatelessWidget {
             child: const Center(child: GIcon('sparkles', size: 17, color: GColors.paper)),
           )
         : GIcon(t.$1, size: 20, color: color);
-    return Semantics(
+    final tab = Semantics(
       button: true,
       selected: active,
       label: t.$2,
@@ -1019,6 +1023,8 @@ class BottomTabs extends StatelessWidget {
         ),
       ),
     );
+    // t361: hold the centre तत्त्व AI tab = Navigator listens (tap unchanged).
+    return i == 2 ? NavHoldTrigger(id: 'tab', child: tab) : tab;
   }
 }
 

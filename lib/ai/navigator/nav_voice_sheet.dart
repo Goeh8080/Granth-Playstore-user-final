@@ -11,9 +11,9 @@ import '../../services/storage.dart';
 import '../../theme/colors.dart';
 import '../../widgets/common.dart';
 import '../../widgets/overlays.dart';
+import 'nav_phrases.dart';
 import 'nav_tts.dart';
 
-const String kNavVoicePreview = 'नमस्ते, मैं इस आवाज़ में बोलूँगा';
 
 /// The voices the sheet offers right now (server list + optional phone voice).
 List<NavVoiceOption> navVoiceChoices({required bool phone}) => [
@@ -59,7 +59,7 @@ class _NavVoiceSheetState extends State<NavVoiceSheet> {
     });
     await saveNavVoice(v.id);
     await widget.speaker.stop();
-    await widget.speaker.say(kNavVoicePreview, voiceId: v.id);
+    await widget.speaker.say(NavPhrases.forGender(v.id == kPhoneVoice ? 'female' : v.gender).preview, voiceId: v.id);
     if (mounted && _playing == v.id) setState(() => _playing = null);
   }
 

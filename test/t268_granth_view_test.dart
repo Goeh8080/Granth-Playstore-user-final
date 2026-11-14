@@ -69,17 +69,6 @@ void main() {
         ),
       ),
     );
-    await t.runAsync(() async {
-      for (final name in [
-        'granth-folders-example.png',
-        'granth-list-example.png',
-      ]) {
-        await precacheImage(
-          AssetImage('assets/previews/$name'),
-          previewKey.currentContext!,
-        );
-      }
-    });
     // Looping preview tickers never idle; advance past showPop's 280ms entry fade/rise
     // so the sheet is fully opaque before assertions or PREVIEW_DIR captures.
     await t.pump();
@@ -165,48 +154,17 @@ void main() {
   });
 
   testWidgets(
-    'chooser contains genuine bundled folder and list screenshots with accessible labels',
+    't368: chooser previews are live mini screens (real folder rows / granth tiles), not pictures, with accessible labels',
     (t) async {
       await boot(t, '#/granths');
-      ImageProvider base(ImageProvider p) => p is ResizeImage ? p.imageProvider : p;
-      final images = t
-          .widgetList<Image>(find.byType(Image))
-          .where((i) => base(i.image) is AssetImage)
-          .toList();
-      expect(
-        images.map((i) => (base(i.image) as AssetImage).assetName),
-        containsAll([
-          'assets/previews/granth-folders-example.png',
-          'assets/previews/granth-list-example.png',
-        ]),
-      );
-      expect(
-        images.where((i) => i.semanticLabel?.contains('उदाहरण') == true).length,
-        2,
-      );
-      final painted = t.widgetList<RawImage>(
-        find.descendant(
-          of: find.byKey(const ValueKey('granth-view-picker')),
-          matching: find.byType(RawImage),
-        ),
-      );
-      expect(
-        painted.where((i) => i.image != null).length,
-        2,
-        reason:
-            'both real examples must actually decode/paint, not just have Image widgets',
-      );
-      for (final name in [
-        'granth-folders-example.png',
-        'granth-list-example.png',
-      ]) {
-        final bytes = File('assets/previews/$name').readAsBytesSync();
-        final codec = await t.runAsync(() => ui.instantiateImageCodec(bytes));
-        final frame = await t.runAsync(() => codec!.getNextFrame());
-        expect(frame!.image.width, greaterThanOrEqualTo(700));
-        frame.image.dispose();
-        codec!.dispose();
-      }
+      final picker = find.byKey(const ValueKey('granth-view-picker'));
+      expect(find.descendant(of: picker, matching: find.byType(Image)), findsNothing);
+      expect(find.byType(GranthViewLivePreview), findsNWidgets(2));
+      expect(find.descendant(of: find.byKey(const ValueKey('granth-view-preview-folders')), matching: find.byType(FolderRow)), findsWidgets);
+      expect(find.descendant(of: find.byKey(const ValueKey('granth-view-preview-list')), matching: find.text('कबीर सागर')), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp('उदाहरण: फ़ोल्डर दृश्य')), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp('उदाहरण: सभी ग्रंथ')), findsOneWidget);
+      expect(find.descendant(of: picker, matching: find.byType(IconButton)), findsNothing, reason: 'no close button');
       expect(t.takeException(), isNull);
     },
   );
@@ -331,14 +289,12 @@ void main() {
     expect(find.byKey(const ValueKey('granth-view-picker')), findsOneWidget);
     expect(find.byKey(const ValueKey('granth-view-preview-folders')), findsOneWidget);
     expect(find.byKey(const ValueKey('granth-view-preview-list')), findsOneWidget);
-    // Accessibility reduce-motion: Motion.on is false, so strip controllers stay stopped.
-    final painted = t.widgetList<RawImage>(
-      find.descendant(
-        of: find.byKey(const ValueKey('granth-view-picker')),
-        matching: find.byType(RawImage),
-      ),
-    );
-    expect(painted.where((i) => i.image != null).length, 2);
+    // Accessibility reduce-motion: Motion.on is false, so the previews stay at the top.
+    double y(String mode) => t.widget<Transform>(find.descendant(of: find.byKey(ValueKey('granth-view-preview-$mode')), matching: find.byKey(const ValueKey('granth-view-preview-page')))).transform.getTranslation().y;
+    expect(y('folders'), 0);
+    await t.pump(const Duration(seconds: 3));
+    expect(y('folders'), 0);
+    expect(y('list'), 0);
     await t.tap(find.byKey(const ValueKey('granth-view-list')));
     await afterChoice(t);
     expect(Store.I.getString('granth-view-mode'), 'list');

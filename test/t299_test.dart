@@ -107,26 +107,12 @@ void main() {
     expect(text('granth-view-title-list').style?.color, primary);
     final bodyColor = theme.textTheme.bodySmall!.color!;
     expect(text('granth-view-note').style?.color, bodyColor.withValues(alpha: 0.72));
-    for (final mode in ['folders', 'list']) {
-      final strip = find.byKey(ValueKey('granth-view-preview-$mode'));
-      final image = find.descendant(of: strip, matching: find.byType(Image));
-      expect(t.getSize(image).width, closeTo(t.getSize(strip).width, 0.5), reason: '$mode: every column visible');
-    }
-    // Complete folder screen is taller than its window → it scrolls (loops) through all of it.
-    final fStrip = find.byKey(const ValueKey('granth-view-preview-folders'));
-    final fImage = find.descendant(of: fStrip, matching: find.byType(Image));
-    expect(t.getSize(fImage).height, greaterThan(t.getSize(fStrip).height));
-    final y0 = t.getTopLeft(fImage).dy;
+    // t368: live mini screens at full option width that keep scrolling.
+    Matrix4 m() => t.widget<Transform>(find.descendant(of: find.byKey(const ValueKey('granth-view-preview-folders')), matching: find.byKey(const ValueKey('granth-view-preview-page')))).transform;
+    final y0 = m().getTranslation().y;
     await t.pump(const Duration(milliseconds: 4500));
-    expect(t.getTopLeft(fImage).dy, lessThan(y0 - 10), reason: 'folder preview loops down to the end');
+    expect(m().getTranslation().y, lessThan(y0 - 10), reason: 'folder preview loops down');
     expect(t.takeException(), isNull);
-  });
-
-  test('preview assets: complete folder screen and real 3×3 list at 2×', () {
-    final f = img.decodePng(File('assets/previews/granth-folders-example.png').readAsBytesSync())!;
-    final l = img.decodePng(File('assets/previews/granth-list-example.png').readAsBytesSync())!;
-    expect(f.width / f.height, closeTo(780 / 1880, 0.001));
-    expect(l.width / l.height, closeTo(780 / 1146, 0.001));
   });
 
   testWidgets('display decode width: physical pixels ≥3×, 128 px buckets', (t) async {

@@ -330,7 +330,7 @@ class FirebaseBridge extends ChangeNotifier {
     error = null;
     stage = null;
     await Store.I.remove(Store.kLoginSeen); // the login gate shows again
-    await Store.I.remove(Store.kGranthView); // folders/list asked once again after the next login
+    // t368: the folders/list choice stays after logout (asked only once ever; Settings changes it).
     await _setAccount(null);
     Presence.I.afterSignOut();
   }
@@ -407,7 +407,7 @@ class FirebaseBridge extends ChangeNotifier {
       busy = false;
       stage = null;
       await Store.I.remove(Store.kLoginSeen);
-      await Store.I.remove(Store.kGranthView);
+      // the folders/list choice is a device preference: kept (asked only once ever)
       await _setAccount(null);
       return null;
     } on GoogleSignInException catch (e) {

@@ -25,6 +25,7 @@ import '../state/toast.dart';
 import '../state/ui_prefs.dart';
 import '../theme/colors.dart';
 import 'common.dart';
+import 'granth_view_setting.dart';
 import 'overlays.dart';
 import 'pop.dart';
 
@@ -803,6 +804,11 @@ class _SettingsState extends State<_Settings> {
                   for (final n in [1, 2])
                     Pill(key: ValueKey('set-layout-$n'), direct: true, label: '$n×$n', tone: UiPrefs.I.uiCols == n ? PillTone.maroon : PillTone.plain, onTap: () => UiPrefs.I.setLayout(n)),
                 ]),
+                // t368: the once-only folders/list choice can be changed here (admin override = locked).
+                ValueListenableBuilder<int>(
+                  valueListenable: granthViewChanged,
+                  builder: (_, _, _) => KeyedSubtree(key: const ValueKey('set-granth-view'), child: _block(granthViewTitle(), granthViewPills())),
+                ),
                 // ---- Extra settings (not in the web app), same pills and headings ----
                 _block('अक्षर का आकार', [
                   for (final (id, title) in textSizeOptions)

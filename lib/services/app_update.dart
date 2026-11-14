@@ -4,7 +4,7 @@
 ///
 /// ```json
 /// "appUpdate": {"latestVersion": "1.0.1", "message": "नया अपडेट आया है, डाउनलोड करें",
-///               "playUrl": "https://play.google.com/store/apps/details?id=com.granth.app",
+///               "playUrl": "https://play.google.com/store/apps/details?id=com.granth.app.user",
 ///               "apkUrl": "https://granth-admin.vedpuran8090.workers.dev/apk/<id>.apk", "force": false}
 /// ```
 /// Shown only when it is newer than this build. Older builds ignore the key. Download offers

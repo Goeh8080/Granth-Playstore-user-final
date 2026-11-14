@@ -1,4 +1,4 @@
-name: U.User-1.0.0
+name: Playstore - 1.0.0
 
 on:
   push:
@@ -18,7 +18,7 @@ jobs:
       EXPECTED_SHA256: 68c7cf34ecf0fada2105c265d2595496baa1bbc97c3fddbc35d21dbe8d0eddde
       # Signing + builds only on push to main or manual runs (never on PRs, incl. forks).
       DO_SIGN: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch' }}
-      EXPECTED_PACKAGE: com.granth.app
+      EXPECTED_PACKAGE: com.granth.app.user
       # Shorebird (code push): only on a manual run with shorebird_release=true, and only once
       # shorebird.yaml (app_id) is committed. Normal pushes keep the plain Flutter build.
       DO_SHOREBIRD: ${{ github.event_name == 'workflow_dispatch' && inputs.shorebird_release == true }}
@@ -148,6 +148,16 @@ jobs:
           echo "package=$pkg targetSdk=$tsdk versionCode=$vc versionName=$vn"
           [ "$pkg" = "$EXPECTED_PACKAGE" ] || fail "package $pkg != $EXPECTED_PACKAGE"
           [ "${tsdk:-0}" -ge 35 ] || fail "targetSdk $tsdk < 35"
+          # Every provider authority / custom permission must sit under the new id (Play rejected
+          # com.granth.app.androidx-startup / .firebaseinitprovider as owned by another developer).
+          if grep -oP '(android:authorities|android:name)="\Kcom\.granth\.app\.[^"]+' "$M" | grep -v '^com\.granth\.app\.user' \
+               | grep -vE '^com\.granth\.app\.[A-Z][A-Za-z]+$'; then
+            fail "authority/permission under plain com.granth.app (must be $EXPECTED_PACKAGE.*)"
+          fi
+          grep -oP 'android:authorities="\K[^"]+' "$M" | while read -r a; do
+            case "$a" in "$EXPECTED_PACKAGE".*) ;; *) echo "::error::authority $a not under $EXPECTED_PACKAGE"; exit 1;; esac
+          done || fail "provider authority outside $EXPECTED_PACKAGE"
+          echo "all provider authorities under $EXPECTED_PACKAGE"
           [ "$vc" = "1" ] || fail "versionCode $vc != 1"
           [ "$vn" = "1.0.0" ] || fail "versionName $vn != 1.0.0"
           if grep -E 'uses-permission[^>]*(AD_ID|ACCESS_ADSERVICES_)' "$M"; then fail "AD_ID / ADSERVICES permission in merged manifest"; fi
@@ -173,8 +183,8 @@ jobs:
           rm -f "$RUNNER_TEMP/check.apks"
           echo "bundletool validate + build-apks OK"
           # Direct (unzipped) copies: the browser download is the .aab / .apk itself, not a zip.
-          cp "$AAB" "dist/U.User-1.0.0.aab"
-          cp dist/granth-arm64-v8a.apk "dist/U.User-1.0.0-arm64.apk"
+          cp "$AAB" "dist/Playstore-1.0.0.aab"
+          cp dist/granth-arm64-v8a.apk "dist/Playstore-1.0.0-arm64.apk"
 
       - uses: actions/upload-artifact@v4
         if: env.DO_SIGN == 'true'
@@ -198,14 +208,14 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: env.DO_SIGN == 'true'
         with:
-          path: dist/U.User-1.0.0.aab
+          path: dist/Playstore-1.0.0.aab
           archive: false
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v7
         if: env.DO_SIGN == 'true'
         with:
-          path: dist/U.User-1.0.0-arm64.apk
+          path: dist/Playstore-1.0.0-arm64.apk
           archive: false
           if-no-files-found: error
 

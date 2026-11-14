@@ -8,7 +8,7 @@ The only intended change is smoother animations.
 
 This build is versioned **1.0.0 (versionCode 1)** for external testing; split APKs report the same versionCode.
 
-This repository builds with the Android package / application id **`com.granth.app`** (renamed from `com.wnm.granthprabandhan` in Nov 2026). It is a separate app on the device: installs of the old id are not updated by it. Signed with the Satlok key. Deep links are unchanged: `granth://open?...` and `https://granth.grok.me/open?...`.
+This repository builds with the Android package / application id **`com.granth.app.user`** (Play rejected `com.granth.app`; Kotlin namespace stays `com.granth.app`). It is a separate app on the device: installs of the old id are not updated by it. Signed with the Satlok key. Deep links are unchanged: `granth://open?...` and `https://granth.grok.me/open?...`.
 
 See [docs/PARITY.md](docs/PARITY.md) for the full feature-parity checklist against the original app, and the original bugs that were not copied.
 

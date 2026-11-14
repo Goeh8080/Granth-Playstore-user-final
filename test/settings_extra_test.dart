@@ -39,7 +39,7 @@ void main() {
     UiPrefs.I.refresh();
     native = [];
     shared = [];
-    PackageInfo.setMockInitialValues(appName: 'ग्रंथ प्रबंधन', packageName: 'com.granth.app', version: '1.0.0', buildNumber: '1', buildSignature: '');
+    PackageInfo.setMockInitialValues(appName: 'ग्रंथ प्रबंधन', packageName: 'com.granth.app.user', version: '1.0.0', buildNumber: '1', buildSignature: '');
     final m = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     m.setMockMethodCallHandler(_native, (c) async {
       native.add(c);

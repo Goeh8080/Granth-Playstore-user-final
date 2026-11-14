@@ -42,7 +42,7 @@ void main() {
     expect(parseNavigatorEnabled({'navigator_enabled': false, 'navigatorEnabled': true}, null), isFalse);
     expect(parseNavigatorEnabled(null, {'navigator_enabled': true}), isTrue, reason: 'legacy flags location');
     expect(parseNavigatorEnabled({}, {}), isFalse);
-    final u = parseAppUpdate({'latestVersion': '1.0.1', 'message': 'm', 'playUrl': 'https://play.google.com/store/apps/details?id=com.granth.app', 'apkUrl': 'https://granth-admin.vedpuran8090.workers.dev/apk/abc.apk', 'force': false})!;
+    final u = parseAppUpdate({'latestVersion': '1.0.1', 'message': 'm', 'playUrl': 'https://play.google.com/store/apps/details?id=com.granth.app.user', 'apkUrl': 'https://granth-admin.vedpuran8090.workers.dev/apk/abc.apk', 'force': false})!;
     expect(u.apkUrl, endsWith('/apk/abc.apk'));
     expect(u.isNewer, isTrue);
   });

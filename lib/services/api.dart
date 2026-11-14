@@ -14,7 +14,7 @@ const kShareHosts = {'granthprabandhan.pages.dev', 'granth.grok.me'};
 
 /// Store page of this app (Settings → ऐप शेयर करें).
 /// Android application id (t305 rename; was com.wnm.granthprabandhan).
-const kPackageId = 'com.granth.app';
+const kPackageId = 'com.granth.app.user';
 const kPlayStoreUrl = 'https://play.google.com/store/apps/details?id=$kPackageId';
 
 final RegExp _mediaPath = RegExp(r'^(granths|uploads)/[A-Za-z0-9_.-]+$');

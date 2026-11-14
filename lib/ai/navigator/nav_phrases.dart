@@ -56,11 +56,9 @@ class NavPhrases {
   static String _clean(String l) => l.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
 }
 
-/// Gender of the voice that speaks now: phone voice → female; saved server voice → its
-/// gender; nothing saved → the Worker default (`default_voice_id`, else Sarah, female).
+/// Gender of the voice that speaks now ([navSpeakVoice]: user / admin / Worker default / Vani).
 String navVoiceGender() {
-  final v = navSavedVoice() ?? navDefaultVoice() ?? kNavDefaultVoices.first.id;
-  if (v == kPhoneVoice) return 'female';
+  final v = navSpeakVoice();
   for (final o in [...navServerVoices(), ...kNavDefaultVoices]) {
     if (o.id == v) return o.gender;
   }

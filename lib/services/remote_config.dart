@@ -80,6 +80,8 @@ class ParsedConfig {
     this.uiGranthViewMode,
     this.navigatorEnabled = false,
     this.navigatorVoices = kNavDefaultVoices,
+    this.navigatorVoiceId,
+    this.navigatorVoiceLocked = false,
     this.appUpdate,
     this.trendingTopics = const [],
     this.dailyPraman,
@@ -133,6 +135,11 @@ class ParsedConfig {
   /// `ui.navigator_voices` (t352, optional): `[{id, name, gender}]` ElevenLabs voices the user may
   /// pick for the Navigator's spoken replies. Missing / invalid → [kNavDefaultVoices].
   final List<NavVoiceOption> navigatorVoices;
+
+  /// `ui.navigator_voice_id` / `ui.navigator_voice_locked` (t370, additive): admin's voice and
+  /// whether the user may change it. Missing → null / false (the user's choice, as before).
+  final String? navigatorVoiceId;
+  final bool navigatorVoiceLocked;
 
   /// `app_update` (t306, optional): admin-pushed update alert; null = none.
   final AppUpdateInfo? appUpdate;
@@ -428,6 +435,8 @@ ParsedConfig? parseConfig(String text, {int cachedVersion = 0, int appBuild = kB
       uiGranthViewMode: parseGranthViewMode(_map(j['ui'])),
       navigatorEnabled: parseNavigatorEnabled(_map(j['ui']), f),
       navigatorVoices: parseNavigatorVoices(_map(j['ui'])),
+      navigatorVoiceId: parseNavigatorVoiceId(_map(j['ui'])),
+      navigatorVoiceLocked: parseNavigatorVoiceLocked(_map(j['ui'])),
       appUpdate: parseAppUpdate(j['appUpdate'] ?? j['app_update']),
       trendingTopics: _parseTrending(_map(j['trending'])),
       dailyPraman: _parseDaily(_map(j['daily_praman'])),
@@ -609,6 +618,10 @@ class RemoteConfig extends ChangeNotifier {
   /// Voices offered in the Navigator voice picker (see [parseNavigatorVoices]).
   List<NavVoiceOption> navigatorVoices = kNavDefaultVoices;
 
+  /// Admin's Navigator voice (null = none) and lock (true = no user picker).
+  String? navigatorVoiceId;
+  bool navigatorVoiceLocked = false;
+
   /// Admin update alert (see app_update.dart).
   AppUpdateInfo? appUpdate;
 
@@ -737,6 +750,8 @@ class RemoteConfig extends ChangeNotifier {
     uiGranthViewMode = p.uiGranthViewMode;
     navigatorEnabled = p.navigatorEnabled;
     navigatorVoices = p.navigatorVoices;
+    navigatorVoiceId = p.navigatorVoiceId;
+    navigatorVoiceLocked = p.navigatorVoiceLocked;
     appUpdate = p.appUpdate;
     uiGrid = p.uiGrid;
     uiGridPages = p.uiGridPages;
@@ -791,6 +806,8 @@ class RemoteConfig extends ChangeNotifier {
     uiGranthViewMode = null;
     navigatorEnabled = false;
     navigatorVoices = kNavDefaultVoices;
+    navigatorVoiceId = null;
+    navigatorVoiceLocked = false;
     appUpdate = null;
     trendingTopics = const [];
     dailyPraman = null;
@@ -804,25 +821,48 @@ class RemoteConfig extends ChangeNotifier {
 /// One server voice for the Navigator (t352). [id] is sent to `/tts` as `voice_id`; the Worker
 /// keeps the ElevenLabs key and should accept only voices on its own allow-list.
 class NavVoiceOption {
-  const NavVoiceOption({required this.id, required this.name, required this.gender});
+  const NavVoiceOption({required this.id, required this.name, required this.gender, this.dynamic = true});
   final String id;
   final String name;
 
   /// `male` | `female` | `other`.
   final String gender;
+
+  /// Worker `dynamic` (additive): false = only the cached common phrases have audio; any other
+  /// text answers 503 (shown as text, no back-off). Missing → true.
+  final bool dynamic;
   @override
-  bool operator ==(Object other) => other is NavVoiceOption && other.id == id && other.name == name && other.gender == gender;
+  bool operator ==(Object other) => other is NavVoiceOption && other.id == id && other.name == name && other.gender == gender && other.dynamic == dynamic;
   @override
-  int get hashCode => Object.hash(id, name, gender);
+  int get hashCode => Object.hash(id, name, gender, dynamic);
 }
 
-/// Built-in fallback = the Worker's free-plan defaults (Sarah female, George male).
+/// The Navigator's default voice (Goutam, t370): Tatv's free voice Vani, female.
+const String kNavPreferredVoice = 'tatv_hi_f_vani';
+
+/// The old Monika (Sogam) id: a saved / admin choice of it means Vani now.
+const String kNavLegacyMonika = 'kvQSb3naDTi3sgHwwBC1';
+
+/// An old Monika choice → Vani; anything else unchanged.
+String? navMapLegacyVoice(String? id) => id == kNavLegacyMonika ? kNavPreferredVoice : id;
+
+/// Built-in fallback = Tatv's free voices (Vani default, Swara; both female, cached phrases only).
 /// The picker prefers `GET /tts/voices` (list + `default_voice_id`); this list is used
 /// only offline / until that answer (or `ui.navigator_voices`) arrives.
 const List<NavVoiceOption> kNavDefaultVoices = [
-  NavVoiceOption(id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah', gender: 'female'),
-  NavVoiceOption(id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', gender: 'male'),
+  NavVoiceOption(id: kNavPreferredVoice, name: 'Vani', gender: 'female', dynamic: false),
+  NavVoiceOption(id: 'tatv_hi_f_swara', name: 'Swara', gender: 'female', dynamic: false),
 ];
+
+/// `ui.navigator_voice_id` (additive): the admin's Navigator voice; null = not set.
+String? parseNavigatorVoiceId(Map<String, dynamic>? ui) {
+  final v = ui?['navigator_voice_id'] ?? ui?['navigatorVoiceId'];
+  if (v is! String || !_voiceId.hasMatch(v.trim())) return null;
+  return navMapLegacyVoice(v.trim());
+}
+
+/// `ui.navigator_voice_locked` (additive): true = the admin's voice only, no user picker.
+bool parseNavigatorVoiceLocked(Map<String, dynamic>? ui) => (ui?['navigator_voice_locked'] ?? ui?['navigatorVoiceLocked']) == true;
 
 /// An https base URL (no trailing slash, ≤ 200 chars) or null.
 String? parseHttpsBase(Object? v) {
@@ -847,13 +887,18 @@ List<NavVoiceOption>? parseVoiceList(Object? v) {
   final seen = <String>{};
   for (final e in v) {
     if (e is! Map) continue;
+    // `available: false` (Worker: a library voice the current plan cannot use) is not offered;
+    // a missing flag means available (older Worker answers).
+    if (e['available'] == false) continue;
+    // Not for the published app (e.g. ElevenLabs Free voices: non-commercial only).
+    if (e['commercial_use'] == false || e['commercialUse'] == false) continue;
     final id = e['id'] ?? e['voice_id'];
     if (id is! String || !_voiceId.hasMatch(id.trim()) || !seen.add(id.trim())) continue;
     final g = '${e['gender'] ?? ''}'.trim().toLowerCase();
     final gender = g == 'male' || g == 'm' || g == 'पुरुष' ? 'male' : g == 'female' || g == 'f' || g == 'महिला' ? 'female' : 'other';
     var name = e['name'] is String ? (e['name'] as String).trim() : '';
     if (name.isEmpty || name.length > 40) name = gender == 'male' ? 'पुरुष आवाज़' : gender == 'female' ? 'महिला आवाज़' : 'आवाज़ ${out.length + 1}';
-    out.add(NavVoiceOption(id: id.trim(), name: name, gender: gender));
+    out.add(NavVoiceOption(id: id.trim(), name: name, gender: gender, dynamic: e['dynamic'] != false));
     if (out.length >= 8) break;
   }
   return out.isEmpty ? null : out;

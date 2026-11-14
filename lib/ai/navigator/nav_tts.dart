@@ -3,7 +3,10 @@
 /// (`POST {aiEndpoint}/tts`, same base URL + `X-Granth-Client` header as `/ask`), which
 /// returns `audio/mpeg`. Playback uses the WebView that already ships with the app
 /// (`webview_flutter`), so no new native plugin is needed (Shorebird-patchable).
-/// Any failure (offline, 404, timeout, no WebView) → silence; navigation never waits on it.
+/// Any failure (offline, 404, timeout, no WebView) → silence (the text is shown instead);
+/// there is NO phone / device TTS fallback (t368). Navigation never waits on it.
+/// Voice-agnostic: ids, gender and the default come from `GET /tts/voices`; any `audio/*`
+/// reply (mpeg, wav …) plays.
 library;
 
 import 'dart:async';
@@ -245,6 +248,13 @@ class WebViewNavAudio implements NavAudio {
     if (c != null && !c.isCompleted) c.complete(ok);
   }
 
+  /// Starts the hidden player ahead of the first reply (long-press start), so it speaks fast.
+  Future<void> warm() async {
+    try {
+      await _ensure();
+    } catch (_) {}
+  }
+
   @override
   Future<bool> play(Uint8List bytes, String mime) async {
     try {
@@ -320,12 +330,19 @@ class NavAudioHost extends StatelessWidget {
 /// Text → server voice → speaker, with a small cache (the same few phrases repeat) and a
 /// back-off when the Worker has no `/tts` yet (404/405) so the app does not keep asking.
 class NavSpeaker {
-  NavSpeaker({TtsClient? client, NavAudio? audio, this.backoff = const Duration(minutes: 10), DateTime Function()? now, String? Function()? voice})
+  NavSpeaker({TtsClient? client, NavAudio? audio, this.backoff = const Duration(minutes: 10), DateTime Function()? now, String? Function()? voice, bool Function()? enabled, bool Function(String? voiceId)? cachedOnly})
       : _client = client,
         _audio = audio,
         _now = now ?? DateTime.now,
-        _voice = voice ?? navSavedVoice;
+        _voice = voice ?? navSpeakVoice,
+        _enabled = enabled ?? navVoiceOn,
+        _cachedOnly = cachedOnly ?? navVoiceCachedOnly;
   final String? Function() _voice;
+  final bool Function() _enabled;
+  final bool Function(String?) _cachedOnly;
+
+  /// Texts a cached-phrases-only voice has no audio for (asked once per run, then text only).
+  final Set<String> _noAudio = {};
 
   TtsClient? _client;
   NavAudio? _audio;
@@ -343,30 +360,41 @@ class NavSpeaker {
   bool get speaking => _speaking;
   bool _speaking = false;
 
-  /// Speaks [text] in [voiceId] (default: the user's saved choice; [kPhoneVoice] = the
-  /// phone's offline voice). If a chosen voice returns 400 / 402 / 503, one retry uses
-  /// the Worker's default voice; any further failure (offline, 404 before prod has /tts,
-  /// 503 tts_unavailable, 402 plan, 429) → the phone voice if it has one, else silence.
+  /// True when the latest [say] got no server voice (offline, /tts off, 503 …): the caller
+  /// shows the text instead. False when it played or was replaced by a newer reply.
+  bool lastSilent = false;
+
+  /// Speaks [text] in [voiceId] (default: the user's saved choice, else Monika when the
+  /// Worker offers her, else the Worker's default). If a chosen voice returns 400 / 402 / 503,
+  /// one retry uses the Worker's default voice; any further failure (offline, 404 before prod
+  /// has /tts, 503 tts_unavailable, 402 plan, 429) → silence ([lastSilent]); never phone TTS.
   Future<bool> say(String text, {String lang = 'hi', String? voiceId}) async {
     final t = text.trim();
+    lastSilent = false;
     if (t.isEmpty) return false;
-    final voice = voiceId ?? _voice();
+    final asked = voiceId ?? _voice();
+    final voice = asked == kPhoneVoice ? null : asked; // old "phone" choice → Worker default
     final my = ++_seq;
     said.add(t);
     voices.add(voice);
     _speaking = true;
     try {
-      if (voice == kPhoneVoice) return await audio.speakLocal(t);
-      if (_offUntil != null && _now().isBefore(_offUntil!)) return await _local(t, my);
+      if (!_enabled()) return _silent(my); // no Vani on the Worker yet: text only
       var v = voice;
       var key = '$lang|${v ?? ''}|$t';
-      var clip = _cache[key];
+      var clip = _cache[key] ?? await _disk(key);
+      if (clip == null && (_noAudio.contains(key) || (_offUntil != null && _now().isBefore(_offUntil!)))) return _silent(my);
       if (clip == null) {
         clip = await client.synth(t, lang: lang, voiceId: v);
-        if (clip == null && v != null && (client.lastFail == TtsFail.badVoice || client.lastFail == TtsFail.unavailable)) {
+        if (clip == null && v != null && (client.lastFail == TtsFail.badVoice || (client.lastFail == TtsFail.unavailable && !_cachedOnly(voice)))) {
           v = null; // chosen voice failed (unknown / 402 plan / 503): Worker default next
           key = '$lang||$t';
           clip = _cache[key] ?? await client.synth(t, lang: lang);
+        }
+        if (clip == null && client.lastFail == TtsFail.unavailable && _cachedOnly(voice)) {
+          // dynamic:false voice: this text simply has no cached audio — text only, no back-off.
+          _noAudio.add('$lang|${voice ?? ''}|$t');
+          return _silent(my);
         }
         if (clip == null) {
           final wait = switch (client.lastFail) {
@@ -376,10 +404,9 @@ class NavSpeaker {
             _ => null,
           };
           if (wait != null) _offUntil = _now().add(wait);
-          return await _local(t, my);
+          return _silent(my);
         }
-        if (_cache.length >= 24) _cache.remove(_cache.keys.first);
-        _cache[key] = clip;
+        _keep(key, clip);
       }
       if (my != _seq) return false; // a newer reply replaced this one
       return await audio.play(clip.bytes, clip.mime);
@@ -395,7 +422,98 @@ class NavSpeaker {
   /// Server speech paused until (back-off after 404 / 503 / 429); null = allowed.
   DateTime? get offUntil => _offUntil;
 
-  Future<bool> _local(String t, int my) async => my == _seq && await audio.speakLocal(t);
+  bool _silent(int my) {
+    if (my == _seq) lastSilent = true;
+    return false;
+  }
+
+  void _keep(String key, ({Uint8List bytes, String mime}) clip) {
+    if (_cache.length >= 24) _cache.remove(_cache.keys.first);
+    _cache[key] = clip;
+    unawaited(_toDisk(key, clip));
+  }
+
+  /// Short, common phrases are kept on the phone too (fast replies, fewer /tts calls).
+  static const int kDiskPhraseMax = 60;
+  static const int kDiskMax = 48;
+
+  /// Folder of saved phrase clips (null = no disk cache, e.g. tests without a Store root).
+  Directory? Function() diskDir = () {
+    try {
+      return Directory('${Store.I.root.path}/nav_tts');
+    } catch (_) {
+      return null;
+    }
+  };
+
+  static String _hash(String s) {
+    // FNV-1a 64 → hex: stable file name per (lang, voice, text).
+    var h = 0xcbf29ce484222325;
+    for (final b in utf8.encode(s)) {
+      h ^= b;
+      h = (h * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF;
+    }
+    return h.toUnsigned(64).toRadixString(16);
+  }
+
+  bool _diskable(String key) => key.split('|').last.runes.length <= kDiskPhraseMax;
+
+  Future<({Uint8List bytes, String mime})?> _disk(String key) async {
+    if (!_diskable(key)) return null;
+    try {
+      final d = diskDir();
+      if (d == null) return null;
+      final f = File('${d.path}/${_hash(key)}');
+      if (!await f.exists()) return null;
+      final raw = await f.readAsBytes();
+      final nl = raw.indexOf(10);
+      if (nl <= 0 || nl > 40 || raw.length - nl - 1 <= 0) return null;
+      final clip = (bytes: Uint8List.sublistView(raw, nl + 1), mime: latin1.decode(raw.sublist(0, nl)));
+      if (_cache.length >= 24) _cache.remove(_cache.keys.first);
+      _cache[key] = clip;
+      return clip;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _toDisk(String key, ({Uint8List bytes, String mime}) clip) async {
+    if (!_diskable(key)) return;
+    try {
+      final d = diskDir();
+      if (d == null) return;
+      await d.create(recursive: true);
+      final files = d.listSync().whereType<File>().toList();
+      if (files.length >= kDiskMax) {
+        files.sort((a, b) => a.statSync().modified.compareTo(b.statSync().modified));
+        for (final f in files.take(files.length - kDiskMax + 1)) {
+          await f.delete();
+        }
+      }
+      final b = BytesBuilder(copy: false)
+        ..add(latin1.encode(clip.mime))
+        ..addByte(10)
+        ..add(clip.bytes);
+      await File('${d.path}/${_hash(key)}').writeAsBytes(b.takeBytes(), flush: false);
+    } catch (_) {}
+  }
+
+  /// Fetches [texts] into the cache in the background (only those not saved yet), so the
+  /// common replies play at once. Stops at the first failure (no extra /tts calls).
+  Future<void> prefetch(List<String> texts, {String lang = 'hi'}) async {
+    if (!_enabled()) return;
+    for (final raw in texts) {
+      final t = raw.trim();
+      if (t.isEmpty) continue;
+      if (_offUntil != null && _now().isBefore(_offUntil!)) return;
+      final v = _voice();
+      final key = '$lang|${v == kPhoneVoice ? '' : v ?? ''}|$t';
+      if (_cache[key] != null || await _disk(key) != null) continue;
+      final clip = await client.synth(t, lang: lang, voiceId: v == kPhoneVoice ? null : v);
+      if (clip == null) return;
+      _keep(key, clip);
+    }
+  }
 
   /// Voice ids asked for, parallel to [said] (tests).
   final List<String?> voices = [];
@@ -435,7 +553,7 @@ String? navDefaultVoice() {
   try {
     final raw = Store.I.getString(kNavVoicesCacheKey);
     final j = raw == null ? null : jsonDecode(raw);
-    final d = j is Map ? j['default_voice_id'] : null;
+    final d = navMapLegacyVoice(j is Map ? j['default_voice_id'] as String? : null);
     return d is String && d.isNotEmpty ? d : null;
   } catch (_) {
     return null;
@@ -448,20 +566,60 @@ Future<bool> refreshNavVoices(TtsClient client) async {
   if (r == null) return false;
   try {
     await Store.I.setString(kNavVoicesCacheKey, jsonEncode({
-      'voices': [for (final v in r.voices) {'id': v.id, 'name': v.name, 'gender': v.gender}],
+      'voices': [for (final v in r.voices) {'id': v.id, 'name': v.name, 'gender': v.gender, if (!v.dynamic) 'dynamic': false}],
       if (r.defaultId != null) 'default_voice_id': r.defaultId,
     }));
   } catch (_) {}
   return true;
 }
 
-/// The saved voice id when it is still valid (phone, or still in the admin's list); else null.
+/// The saved voice id when it is still offered by the Worker / admin list; else null.
+/// (An old "phone voice" choice counts as nothing saved: there is no device TTS any more;
+/// an old Monika choice means Vani.)
 String? navSavedVoice() {
   try {
-    final v = Store.I.getString(kNavVoiceKey);
-    if (v == null || v.isEmpty) return null;
-    return v == kPhoneVoice || navServerVoices().any((o) => o.id == v) ? v : null;
+    final v = navMapLegacyVoice(Store.I.getString(kNavVoiceKey));
+    if (v == null || v.isEmpty || v == kPhoneVoice) return null;
+    return navServerVoices().any((o) => o.id == v) ? v : null;
   } catch (_) {
     return null;
   }
+}
+
+/// The admin locked the Navigator voice (`ui.navigator_voice_locked`): no user picker.
+bool navVoiceLocked() => RemoteConfig.I.navigatorVoiceLocked;
+
+/// The voice the Navigator speaks with: the user's own choice (unless the admin locked the
+/// voice), else the admin's `ui.navigator_voice_id`, else the Worker's `default_voice_id`, else
+/// the bundled Vani. (A locked voice is always the admin's.)
+String navSpeakVoice() {
+  String? admin;
+  try {
+    admin = RemoteConfig.I.navigatorVoiceId;
+  } catch (_) {}
+  if (admin != null && navVoiceLocked()) return admin;
+  return (navVoiceLocked() ? null : navSavedVoice()) ?? admin ?? navDefaultVoice() ?? kNavPreferredVoice;
+}
+
+/// Spoken replies on: the Worker's saved `/tts/voices` list offers Vani, or the admin set a
+/// voice. Otherwise text only (no /tts calls, no device TTS).
+bool navVoiceOn() {
+  try {
+    if (RemoteConfig.I.navigatorVoiceId != null) return true;
+    final raw = Store.I.getString(kNavVoicesCacheKey);
+    if (raw == null || raw.isEmpty) return false;
+    final j = jsonDecode(raw);
+    final l = j is Map ? parseVoiceList(j['voices']) : null;
+    return l != null && l.any((v) => v.id == kNavPreferredVoice);
+  } catch (_) {
+    return false;
+  }
+}
+
+/// The voice [id] has audio only for its cached phrases (Worker `dynamic:false`).
+bool navVoiceCachedOnly(String? id) {
+  for (final v in [...navServerVoices(), ...kNavDefaultVoices]) {
+    if (v.id == id) return !v.dynamic;
+  }
+  return false;
 }

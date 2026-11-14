@@ -177,6 +177,8 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
     }
     if (!available) return false;
     listenSource = 'hold';
+    // Fast: the mic starts now; the hidden player warms up meanwhile for the reply.
+    unawaited(_warm());
     await listenOnce();
     return state == NavVoiceState.listening;
   }
@@ -199,6 +201,17 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   bool _voicesAsked = false;
+
+  /// Player + common replies ready ahead of time (once per run; never blocks listening).
+  Future<void>? _warming;
+  Future<void> _warm() => _warming ??= () async {
+        try {
+          final a = speaker.audio;
+          if (a is WebViewNavAudio) await a.warm();
+          final p = NavPhrases.current();
+          await speaker.prefetch([p.again, p.unknown, p.nothing]);
+        } catch (_) {}
+      }();
 
   void _sync() {
     if (available && !_voicesAsked) {
@@ -424,20 +437,21 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
         _pending = [for (final c in choices) c.id];
         _pendingAt = DateTime.now();
         Toast.show('${r.prompt} ${choices.map((c) => c.label).join(' / ')}');
-        await _say(NavPhrases.current().clarify([for (final c in choices) c.label]));
+        await _say(NavPhrases.current().clarify([for (final c in choices) c.label]), shown: true);
         // Listen for the answer right away (one-shot); wake mode also accepts it unprefixed.
         if (available && _foreground && !wakeOn && state == NavVoiceState.idle) unawaited(listenOnce());
       case NavUnknown():
         final empty = text.trim().isEmpty;
         final p = NavPhrases.current();
         Toast.show(empty ? p.nothing : p.unknownToast(text));
-        await _say(empty ? p.nothing : p.unknown);
+        await _say(empty ? p.nothing : p.unknown, shown: true);
     }
     return r;
   }
 
   /// The voice picker sheet ("awaaz badlo" or Settings).
   Future<void> openVoicePicker() async {
+    if (navVoiceLocked()) return; // the admin's voice only
     final o = openVoicePickerOverride;
     if (o != null) return o();
     final ctx = navKey?.currentContext;
@@ -445,13 +459,15 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
     await showNavVoiceSheet(ctx, speaker: speaker);
   }
 
-  /// Speaks [text] with the mic off; re-arms the wake phrase afterwards.
-  Future<void> _say(String text, {bool rearm = true}) async {
+  /// Speaks [text] with the mic off; re-arms the wake phrase afterwards. No server voice
+  /// (offline, /tts off …) → the text is shown instead ([shown]: already on screen).
+  Future<void> _say(String text, {bool rearm = true, bool shown = false}) async {
     _speaking = true;
     _restart?.cancel();
     try {
       if (speech.listening) await speech.stop();
       await speaker.say(text);
+      if (speaker.lastSilent && !shown) Toast.show(text);
     } catch (_) {
     } finally {
       _speaking = false;

@@ -1,7 +1,7 @@
 /// t352 Navigator voice picker: "awaaz badlo" / "voice change" / "kaunsi awaaz" (or Settings)
 /// opens this sheet. Voices come from `GET /tts/voices` (list + `default_voice_id`); offline
-/// fallback is the bundled Sarah (female, default) + George (male). "फ़ोन की आवाज़" is listed
-/// only when the phone has a local voice.
+/// fallback is the bundled Sarah (female, default) + George (male). Voices the Worker marks
+/// `available: false` are not shown. No phone voice (no device TTS).
 /// Tap = save locally + short preview; the choice goes to `/tts` as `voice_id`.
 library;
 
@@ -16,29 +16,20 @@ import 'nav_phrases.dart';
 import 'nav_tts.dart';
 
 
-/// The voices the sheet offers right now (server list + optional phone voice).
-List<NavVoiceOption> navVoiceChoices({required bool phone}) => [
-      ...navServerVoices(),
-      if (phone) const NavVoiceOption(id: kPhoneVoice, name: 'फ़ोन की आवाज़ (ऑफ़लाइन)', gender: 'other'),
-    ];
+/// The voices the sheet offers right now (the Worker's / admin's list). [phone] is ignored
+/// (kept for older callers): there is no device TTS any more.
+List<NavVoiceOption> navVoiceChoices({bool phone = false}) => navServerVoices();
 
-/// The saved choice if it is still offered, else null (= server default voice).
-String? navCurrentVoice({bool phone = true}) {
-  final v = navSavedVoice();
-  return v == kPhoneVoice && !phone ? null : v;
-}
+/// The saved choice if it is still offered, else null (= default voice).
+String? navCurrentVoice({bool phone = false}) => navSavedVoice();
 
 Future<void> saveNavVoice(String id) => Store.I.setString(kNavVoiceKey, id);
 
 /// Opens the picker; the list refreshes from `GET /tts/voices` (bundled list offline).
 Future<void> showNavVoiceSheet(BuildContext context, {required NavSpeaker speaker}) async {
-  final results = await Future.wait([
-    speaker.audio.hasLocalVoice(),
-    refreshNavVoices(speaker.client).timeout(const Duration(seconds: 4), onTimeout: () => false),
-  ]);
-  final phone = results[0];
+  await refreshNavVoices(speaker.client).timeout(const Duration(seconds: 4), onTimeout: () => false);
   if (!context.mounted) return;
-  await showPop<void>(context, (ctx) => NavVoiceSheet(speaker: speaker, phone: phone));
+  await showPop<void>(context, (ctx) => NavVoiceSheet(speaker: speaker));
 }
 
 class NavVoiceSheet extends StatefulWidget {
@@ -50,7 +41,7 @@ class NavVoiceSheet extends StatefulWidget {
 }
 
 class _NavVoiceSheetState extends State<NavVoiceSheet> {
-  late String? _sel = navCurrentVoice(phone: widget.phone) ?? navDefaultVoice() ?? navServerVoices().first.id;
+  late String? _sel = navSpeakVoice();
   String? _playing;
 
   Future<void> _pick(NavVoiceOption v) async {
@@ -60,7 +51,7 @@ class _NavVoiceSheetState extends State<NavVoiceSheet> {
     });
     await saveNavVoice(v.id);
     await widget.speaker.stop();
-    await widget.speaker.say(NavPhrases.forGender(v.id == kPhoneVoice ? 'female' : v.gender).preview, voiceId: v.id);
+    await widget.speaker.say(NavPhrases.forGender(v.gender).preview, voiceId: v.id);
     if (mounted && _playing == v.id) setState(() => _playing = null);
   }
 

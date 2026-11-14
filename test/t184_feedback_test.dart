@@ -33,4 +33,14 @@ void main() {
       expect(fb.lastRejected, isNull);
     });
   }
+
+  test('👎 on a quiz card sends quiz:{question_id, text, options, correct_index, selected_index}; a normal answer does not', () async {
+    final f = Fake([200, 200]);
+    final fb = make(f);
+    await fb.down('q1', question: 'ज्ञान चर्चा', answer: 'प्रश्न', quiz: AiFeedback.quizFlag(questionId: '1e08501d60739092', text: 'कबीर साहेब कब प्रकट हुए?', options: ['1398', '1450', '1518', '1600'], correctIndex: 0, selectedIndex: 2));
+    expect(body(f.seen.first)['quiz'], {'question_id': '1e08501d60739092', 'text': 'कबीर साहेब कब प्रकट हुए?', 'options': ['1398', '1450', '1518', '1600'], 'correct_index': 0, 'selected_index': 2});
+    expect(body(f.seen.first)['kind'], 'thumbs_down');
+    await fb.down('a2', question: 'q', answer: 'x');
+    expect(body(f.seen.last).containsKey('quiz'), isFalse);
+  });
 }

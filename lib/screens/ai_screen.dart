@@ -484,10 +484,23 @@ class _AnswerBubbleState extends State<AnswerBubble> {
         unawaited(AiFeedback.I.correct(_fkey,question:widget.question,answer:_plain,correction:r.text,chat:widget.chatId));
         if(mounted)setState(()=>_corrSent=true);
       }else{
-        unawaited(AiFeedback.I.down(_fkey,question:widget.question,answer:_plain,reason:r.text,chat:widget.chatId));
+        unawaited(AiFeedback.I.down(_fkey,question:widget.question,answer:_plain,reason:r.text,chat:widget.chatId,quiz:_quizFlag()));
       }
       Toast.show('धन्यवाद! रिपोर्ट admin को जाँच के लिए भेजी जा रही है');
     }finally{_flagBusy=false;}
+  }
+  /// A 👎 on a quiz card: the question, its options and (when graded) the right / picked option.
+  Map<String,Object?>? _quizFlag(){
+    final q=msg.quizQuestion;
+    if(q==null)return null;
+    final res=msg.quizResult;
+    final sel=msg.quizSelection;
+    final pick=sel==null?-1:quizOptionIndex(q.options,sel);
+    return AiFeedback.quizFlag(
+      questionId:q.id,text:q.text,options:q.options,
+      correctIndex:res?.correctIndexIn(q.options,selected:sel),
+      selectedIndex:res!=null?res.selectedIndexIn(q.options,sel):(pick<0?null:pick),
+    );
   }
   bool _corrSent=false;
   Future<void> _sendCorrection()async{

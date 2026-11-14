@@ -97,11 +97,14 @@ class AiFeedback extends ChangeNotifier {
   }
 
   /// 👎: records the vote, queues the report and tries to send it now.
-  Future<void> down(String key, {required String question, required String answer, String reason = '', String chat = ''}) async {
+  ///
+  /// [quiz] (additive): a 👎 on a ज्ञान चर्चा question card also sends
+  /// `quiz:{question_id, text, options, correct_index, selected_index}` ([quizFlag]).
+  Future<void> down(String key, {required String question, required String answer, String reason = '', String chat = '', Map<String, Object?>? quiz}) async {
     _setVote(key, -1);
     final q = queue
       ..removeWhere((e) => e['key'] == key)
-      ..add({'key': key, 'question': _cut(question, 500), 'answer': _cut(answer, 2000), 'reason': _cut(reason.trim(), 300), 'chat': chat, 'at': DateTime.now().toUtc().toIso8601String()});
+      ..add({'key': key, 'question': _cut(question, 500), 'answer': _cut(answer, 2000), 'reason': _cut(reason.trim(), 300), 'chat': chat, 'at': DateTime.now().toUtc().toIso8601String(), 'quiz': ?quiz});
     while (q.length > kMaxQueue) {
       q.removeAt(0);
     }
@@ -125,6 +128,15 @@ class AiFeedback extends ChangeNotifier {
     notifyListeners();
     await flush();
   }
+
+  /// The `quiz` object of a 👎 on a quiz card: ids/texts capped, indexes 0-based or null.
+  static Map<String, Object?> quizFlag({required String questionId, required String text, required List<String> options, int? correctIndex, int? selectedIndex}) => {
+    'question_id': _cut(questionId, 64),
+    'text': _cut(text, 500),
+    'options': [for (final o in options.take(8)) _cut(o, 200)],
+    'correct_index': correctIndex,
+    'selected_index': selectedIndex,
+  };
 
   static String _cut(String s, int n) => s.runes.length > n ? String.fromCharCodes(s.runes.take(n)) : s;
 

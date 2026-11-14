@@ -205,6 +205,11 @@ void main() {
     });
 
     test('admin voice (ui.navigator_voice_id / _locked): admin → user (unlocked) → server default → Vani', () async {
+      await Store.I.setString(kNavVoicesCacheKey, jsonEncode({'voices': [
+        {'id': 'tatv_hi_f_vani', 'name': 'Vani', 'gender': 'female'},
+        {'id': 'tatv_hi_f_swara', 'name': 'Swara', 'gender': 'female'},
+        {'id': 'tatv_hi_m_arjun', 'name': 'Arjun', 'gender': 'male'},
+      ], 'default_voice_id': 'tatv_hi_f_vani'}));
       expect(navSpeakVoice(), 'tatv_hi_f_vani');
       await Store.I.setString(kNavVoiceKey, 'tatv_hi_m_arjun');
       expect(navSpeakVoice(), 'tatv_hi_m_arjun', reason: 'user choice');
@@ -215,6 +220,18 @@ void main() {
       await Store.I.setString(kNavVoiceKey, 'tatv_hi_m_arjun');
       RemoteConfig.I.navigatorVoiceLocked = true;
       expect(navSpeakVoice(), 'tatv_hi_f_swara', reason: 'locked: admin only');
+      RemoteConfig.I.navigatorVoiceId = 'not_in_tts_voices';
+      expect(navSpeakVoice(), 'tatv_hi_f_vani', reason: 'locked + admin id not in /tts/voices: ignored → default');
+      RemoteConfig.I.navigatorVoiceLocked = false;
+      expect(navSpeakVoice(), 'tatv_hi_m_arjun', reason: 'unknown admin id ignored; user choice');
+      await Store.I.setString(kNavVoiceKey, '');
+      expect(navSpeakVoice(), 'tatv_hi_f_vani', reason: 'unknown admin id ignored; default');
+      RemoteConfig.I.navigatorVoiceId = 'tatv_hi_f_swara';
+      RemoteConfig.I.navigatorVoiceLocked = true;
+      expect(parseNavigatorVoiceId({'navigatorVoiceId': 'tatv_hi_f_swara'}), 'tatv_hi_f_swara', reason: 'camelCase fallback');
+      expect(parseNavigatorVoiceId({'navigator_voice_id': 'x' * 65}), isNull, reason: 'max 64 chars');
+      expect(parseNavigatorVoiceLocked({'navigatorVoiceLocked': true}), isTrue);
+      expect(parseNavigatorVoiceLocked({'navigator_voice_locked': 'true'}), isFalse, reason: 'only a real true');
       expect(parseNavigatorVoiceId({'navigator_voice_id': kNavLegacyMonika}), kNavPreferredVoice);
       expect(parseNavigatorVoiceId({'navigator_voice_id': 'bad id!'}), isNull);
       expect(parseNavigatorVoiceLocked({'navigator_voice_locked': true}), isTrue);

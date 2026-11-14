@@ -589,23 +589,33 @@ String? navSavedVoice() {
 /// The admin locked the Navigator voice (`ui.navigator_voice_locked`): no user picker.
 bool navVoiceLocked() => RemoteConfig.I.navigatorVoiceLocked;
 
-/// The voice the Navigator speaks with: the user's own choice (unless the admin locked the
-/// voice), else the admin's `ui.navigator_voice_id`, else the Worker's `default_voice_id`, else
-/// the bundled Vani. (A locked voice is always the admin's.)
-String navSpeakVoice() {
+/// The admin's `ui.navigator_voice_id`, only when `/tts/voices` lists it (an unknown id is
+/// ignored, so a typo in the admin never silences the Navigator).
+String? navAdminVoice() {
   String? admin;
   try {
     admin = RemoteConfig.I.navigatorVoiceId;
   } catch (_) {}
-  if (admin != null && navVoiceLocked()) return admin;
-  return (navVoiceLocked() ? null : navSavedVoice()) ?? admin ?? navDefaultVoice() ?? kNavPreferredVoice;
+  if (admin == null) return null;
+  return navServerVoices().any((v) => v.id == admin) ? admin : null;
+}
+
+/// The voice the Navigator speaks with.
+/// Locked (`ui.navigator_voice_locked == true`): the admin's voice, else the default (no picker).
+/// Not locked: the user's own choice, else the admin's voice, else the default.
+/// The default is the Worker's `default_voice_id`, else the bundled Vani.
+String navSpeakVoice() {
+  final admin = navAdminVoice();
+  final fallback = navDefaultVoice() ?? kNavPreferredVoice;
+  if (navVoiceLocked()) return admin ?? fallback;
+  return navSavedVoice() ?? admin ?? fallback;
 }
 
 /// Spoken replies on: the Worker's saved `/tts/voices` list offers Vani, or the admin set a
 /// voice. Otherwise text only (no /tts calls, no device TTS).
 bool navVoiceOn() {
   try {
-    if (RemoteConfig.I.navigatorVoiceId != null) return true;
+    if (navAdminVoice() != null) return true;
     final raw = Store.I.getString(kNavVoicesCacheKey);
     if (raw == null || raw.isEmpty) return false;
     final j = jsonDecode(raw);

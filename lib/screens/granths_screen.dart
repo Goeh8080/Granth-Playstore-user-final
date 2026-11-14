@@ -80,7 +80,8 @@ class _GranthsPanelState extends State<GranthsPanel> with LivePanel {
     // The folder's granths are resolved once per catalog (Shelves caches the index).
     final pool = scope == null || widget.idle != null ? all : scope.resolve(Shelves.indexFor(all));
     final idleOn = widget.idle != null && _q.trim().isEmpty;
-    var rows = searchRows(pool, _q, CatalogStore.I.granthDoc);
+    // Tester t365: a search inside a folder (पुराण…) covers EVERY granth, the folder's first.
+    var rows = identical(pool, all) ? searchRows(pool, _q, CatalogStore.I.granthDoc) : globalSearchRows(pool, all, _q, CatalogStore.I.granthDoc);
     if (_q.trim().isEmpty) {
       rows = [...rows];
       stableSort(rows, (a, b) => numericCompare(a.position, b.position));

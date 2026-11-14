@@ -19,6 +19,7 @@ import 'sanitize.dart';
 import 'chat_store.dart';
 import 'extra_sources.dart';
 import 'retriever.dart';
+import 'quiz_recent.dart';
 
 /// "क्या आप यह प्रश्न admin को भेजना चाहेंगे?" — shown under an answer the AI could not give.
 /// Shown when the model's reply was empty (or only ids).
@@ -148,7 +149,10 @@ class ChatController extends ChangeNotifier {
   List<Topic> get topics => (_topics ?? () => CatalogStore.I.topics)();
   math.Random get rng => _rng ?? math.Random();
 
-  AiClient get client => _client ?? AiClient();
+  // ONE client: `mode` / `quiz_reply_to` are set on it right before `ask`. A fresh AiClient per
+  // read dropped them, so ज्ञान चर्चा went out as plain chat (repeats, no green/red verdict).
+  late final AiClient _ownClient = AiClient();
+  AiClient get client => _client ?? _ownClient;
   ChatStore get store => _store ?? ChatStore.I;
   List<Praman> get pramans => (_pramans ?? () => CatalogStore.I.pramans)();
   int get version => (_version ?? () => CatalogStore.I.catalogVersion)();
@@ -301,16 +305,39 @@ class ChatController extends ChangeNotifier {
       final cands = [...notes, ...prs, ...tops];
       final inQuiz = quizChats.contains(c.id);
       final replyTo = inQuiz && quiz?.convId == c.id ? quiz!.q.id : null;
-      client
+      final cl = client;
+      cl
         ..mode = inQuiz ? 'gyan_charcha' : null
-        ..quizReplyTo = replyTo;
+        ..quizReplyTo = replyTo
+        ..avoid = inQuiz ? RecentQuiz.I.recentIds() : const [];
       final AiAnswer a;
+      QuizQuestion? fresh;
+      // In this chat: never asked twice. Recent sessions: asked again for a fresh one (twice),
+      // and when the worker has nothing new the question is still shown (no dead end).
+      bool inChat(QuizQuestion q) =>
+          c.messages.any((m) => m.quizQuestion?.id == q.id || (m.quizQuestion != null && normalizeQuizText(m.quizQuestion!.text) == normalizeQuizText(q.text)));
+      bool isRepeat(QuizQuestion q) => inChat(q) || RecentQuiz.I.seen(q.id, q.text);
       try {
-        a = await client.ask(question, history, cands);
+        a = await cl.ask(question, history, cands);
+        // ज्ञान चर्चा: a question asked before (this chat or a recent session) is asked for
+        // again, quietly, up to twice — the user gets a new question, not a repeat.
+        fresh = inQuiz ? a.nextQuestion : null;
+        for (var t = 0; t < 2 && fresh != null && isRepeat(fresh) && run == _run; t++) {
+          cl
+            ..quizReplyTo = null
+            ..avoid = [fresh.id, ...RecentQuiz.I.recentIds(49)];
+          try {
+            final b = await cl.ask(kGyanStart, history, cands);
+            if (b.nextQuestion != null) fresh = b.nextQuestion;
+          } catch (_) {
+            break;
+          }
+        }
       } finally {
-        client
+        cl
           ..mode = null
-          ..quizReplyTo = null;
+          ..quizReplyTo = null
+          ..avoid = const [];
       }
       if (run != _run) {
         // The user left this chat (new chat / another chat) while the verdict was on its way:
@@ -326,8 +353,8 @@ class ChatController extends ChangeNotifier {
       final now = DateTime.now().millisecondsSinceEpoch;
       // Never show raw candidate ids ("id-467"): the praman / note / topic name instead.
       final names = {for (final x in cands) x.id: x.granth.isEmpty ? x.title : '${x.title} (${x.granth})'};
-      final candidate = inQuiz ? a.nextQuestion : null;
-      final repeated = candidate != null && c.messages.any((m) => m.quizQuestion?.id == candidate.id || (m.quizQuestion != null && normalizeQuizText(m.quizQuestion!.text) == normalizeQuizText(candidate.text)));
+      final candidate = fresh;
+      final repeated = candidate != null && inChat(candidate);
       final nq = repeated ? null : candidate;
       final verdict = a.quizResult;
       if (inQuiz && verdict != null) {
@@ -367,6 +394,7 @@ class ChatController extends ChangeNotifier {
       if (nq != null) {
         c.messages.add(ChatMsg(role: 'assistant', text: nq.text, quizQuestion: nq, at: now + 1));
         quiz = (convId: c.id, q: nq);
+        unawaited(RecentQuiz.I.add(nq.id, nq.text));
       }
       c.updated = now;
       sending = false;

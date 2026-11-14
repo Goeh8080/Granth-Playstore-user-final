@@ -306,6 +306,15 @@ int scorePlan(QueryPlan p, SearchDoc t) {
   return i.length > 1 && a < i.length ? (s * 0.65).round() : s.round();
 }
 
+/// A search typed inside a folder: it covers [all] rows, the ones of [folder] first (each part in
+/// its match order). Empty query = the folder unchanged.
+List<T> globalSearchRows<T>(List<T> folder, List<T> all, String query, SearchDoc Function(T) doc) {
+  if (query.trim().isEmpty) return folder;
+  final mine = Set<T>.identity()..addAll(folder);
+  final hits = searchRows(all, query, doc);
+  return [...hits.where(mine.contains), ...hits.where((e) => !mine.contains(e))];
+}
+
 /// `Ln` — exact substring hits first (by position), else fuzzy-scored results.
 List<T> searchRows<T>(List<T> rows, String query, SearchDoc Function(T) doc) {
   final r = query.trim();

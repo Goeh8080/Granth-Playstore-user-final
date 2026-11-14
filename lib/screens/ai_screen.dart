@@ -554,6 +554,14 @@ class _AnswerBubbleState extends State<AnswerBubble> {
                     const SizedBox(height: 10),
                     QuizOptions(question: msg.quizQuestion!, selected: msg.quizSelection, result: msg.quizResult,
                       onAnswer: ChatController.I.canAnswerCard(widget.chatId, msg) ? (o) => ChatController.I.answerQuiz(o, questionId: msg.quizQuestion!.id) : null),
+                    // After the verdict: the praman the question came from (tap opens it).
+                    if (msg.quizResult != null && msg.quizQuestion!.pramanId != null && !msg.cited.contains(msg.quizQuestion!.pramanId))
+                      if (widget.find(msg.quizQuestion!.pramanId!) case final p?) ...[
+                        const SizedBox(height: 6),
+                        Text('प्रमाण', key: const ValueKey('quiz-praman-label'), style: GText.sans(size: 12.5, weight: FontWeight.w700, color: GColors.brown)),
+                        const SizedBox(height: 6),
+                        PramanPreview(p),
+                      ],
                   ],
                   if (_shownRefs.isNotEmpty) ...[
                     const SizedBox(height: 12),
@@ -1372,6 +1380,7 @@ class QuizOptions extends StatelessWidget {
               : i == right
               ? 'right'
               // Pick unknown (free-text answer): only the right option is painted, nothing red.
+              // A wrong pick: the pick and every other wrong option red, the right one green.
               : r.correct == false && (sel == i || (right != null && sel != null))
               ? 'wrong'
               : null;

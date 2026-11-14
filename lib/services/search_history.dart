@@ -35,4 +35,13 @@ class SearchHistory {
       await Store.I.setString(key, encoded);
     }
   }
+
+  /// "मिटाएँ": forgets every saved search.
+  static Future<void> clear() => Store.I.remove(key);
+
+  /// Forgets one saved search.
+  static Future<void> forget(String query) async {
+    final q = query.trim().toLowerCase();
+    await Store.I.setString(key, jsonEncode([for (final v in recent) if (v.toLowerCase() != q) v]));
+  }
 }

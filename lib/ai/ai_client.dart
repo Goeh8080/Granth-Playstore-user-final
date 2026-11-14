@@ -304,7 +304,7 @@ String _cut(String s, int max) {
 /// The JSON body of `POST /ask`, with every limit of the contract applied.
 /// `iid` (32 lower-case hex install id) and `uid` (Firebase uid, signed in only) are additive and
 /// validated like the presence body: an invalid value is left out, never sent.
-Map<String, Object> buildAskBody(String question, List<AiTurn> history, List<Candidate> candidates, {String? mode, String? quizReplyTo, String? iid, String? uid}) {
+Map<String, Object> buildAskBody(String question, List<AiTurn> history, List<Candidate> candidates, {String? mode, String? quizReplyTo, String? iid, String? uid, List<String> avoid = const []}) {
   final turns = history.where((t) => t.text.trim().isNotEmpty && (t.role == 'user' || t.role == 'assistant')).toList();
   final last = turns.length > kHistoryTurns ? turns.sublist(turns.length - kHistoryTurns) : turns;
   return {
@@ -315,6 +315,8 @@ Map<String, Object> buildAskBody(String question, List<AiTurn> history, List<Can
     if (quizReplyTo != null) 'quiz_reply_to': {'question_id': quizReplyTo},
     if (iid != null && kIidPattern.hasMatch(iid)) 'iid': iid,
     if (uid != null && kUidPattern.hasMatch(uid)) 'uid': uid,
+    // Additive, unknown-safe: ज्ञान चर्चा question ids this install saw lately (no repeats).
+    if (mode == 'gyan_charcha' && avoid.isNotEmpty) 'avoid_question_ids': [for (final a in avoid.take(50)) if (RegExp(r'^[a-f0-9]{16}$').hasMatch(a)) a],
   };
 }
 
@@ -407,10 +409,11 @@ class AiClient {
   /// ज्ञान चर्चा: set by the chat just before [ask] (`mode`, `quiz_reply_to`), cleared after.
   String? mode;
   String? quizReplyTo;
+  List<String> avoid = const [];
 
   /// Asks once; on a timeout, a network error, a 429 or a 5xx it waits a little and asks once more.
   Future<AiAnswer> ask(String question, List<AiTurn> history, List<Candidate> candidates) async {
-    final body = jsonEncode(buildAskBody(question, history, candidates, mode: mode, quizReplyTo: quizReplyTo, iid: _safe(_iid), uid: _safe(_uid)));
+    final body = jsonEncode(buildAskBody(question, history, candidates, mode: mode, quizReplyTo: quizReplyTo, iid: _safe(_iid), uid: _safe(_uid), avoid: avoid));
     try {
       return await _once(body);
     } on AiException catch (e) {

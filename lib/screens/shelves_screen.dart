@@ -285,7 +285,9 @@ class _FolderScreenState extends State<_FolderScreen> with LivePanel {
     final children = group == null ? index.visibleGroups(religion.id) : index.visibleSubgroups(religion.id, group.id);
     final searching = _query.trim().isNotEmpty;
     final cols = searching ? UiPrefs.I.granthCols : folderCols();
-    final matches = searching ? searchRows(inside, _query, CatalogStore.I.granthDoc) : const <Granth>[];
+    // Tester t365: inside any dharm / folder the search box finds EVERY granth (inside पुराण,
+    // "ved" shows the वेद granths too), this folder's own matches first.
+    final matches = searching ? globalSearchRows(inside, CatalogStore.I.granths, _query, CatalogStore.I.granthDoc) : const <Granth>[];
     final rows = <Widget>[];
     final ids = <String>[];
     for (final c in children) {
@@ -312,7 +314,7 @@ class _FolderScreenState extends State<_FolderScreen> with LivePanel {
             leading: group == null ? ReligionSymbol(religion.icon, tone: _tone(religion.tone), size: 44) : GroupIcon(group.icon, size: 44),
             tools: Tools(
               grid: GridSwitch(locked: UiPrefs.I.gridLocked(searching ? 'granths' : 'shelves'), options: const [1, 2, 3], value: cols, onChanged: (v) => UiPrefs.I.setCols(Store.kGranthCols, v)),
-              search: SearchField(placeholder: 'इस फ़ोल्डर में खोजें', initial: _query, onChanged: (q) {
+              search: SearchField(placeholder: 'सभी ग्रंथों में खोजें', initial: _query, onChanged: (q) {
                 Places.setQuery(_place, q);
                 setState(() => _query = q);
               }),
@@ -328,7 +330,7 @@ class _FolderScreenState extends State<_FolderScreen> with LivePanel {
         KeyedSubtree(key: ValueKey('folder-search-$cols'), child: gridSliver(count: matches.length, cols: cols, gap: 10,
           item: (_, i) => GranthCard(granth: matches[i], index: i + 1, total: matches.length, cols: cols))),
       if (searching && matches.isEmpty && rows.isEmpty)
-        const SliverToBoxAdapter(child: EmptyState(title: 'कोई ग्रंथ नहीं', body: 'इस फ़ोल्डर में दूसरा शब्द खोजें।')),
+        const SliverToBoxAdapter(child: EmptyState(title: 'कोई ग्रंथ नहीं', body: 'दूसरा शब्द खोजें।')),
       if (!searching) folderSliver(rows: rows, ids: ids, cols: cols, dx: dx, ledger: _ledger),
       if (!searching && rows.isEmpty)
         SliverToBoxAdapter(

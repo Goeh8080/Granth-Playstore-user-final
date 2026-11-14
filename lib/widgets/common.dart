@@ -821,35 +821,50 @@ class _SearchFieldState extends State<SearchField> {
         ),
       ),
     )),
+        // The last 5 searches, under the box while it is focused: tap = search again, × = forget
+        // one, "मिटाएँ" = forget all. A tap region of the field, so tapping a chip does not first
+        // unfocus the box (which hid the chips before the tap landed).
         if (focus && SearchHistory.recent.isNotEmpty)
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final query in SearchHistory.recent)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6, right: 6),
-                    child: ActionChip(
+          TextFieldTapRegion(
+            child: Padding(
+              key: const ValueKey('search-history'),
+              padding: const EdgeInsets.only(top: 6),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text('हाल की खोजें', style: GText.sans(size: 12.5, weight: FontWeight.w700, color: GColors.brown)),
+                  for (final query in SearchHistory.recent)
+                    InputChip(
+                      key: ValueKey('search-history-$query'),
+                      visualDensity: VisualDensity.compact,
                       label: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 180),
-                        child: Text(
-                          query,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        child: Text(query, maxLines: 1, overflow: TextOverflow.ellipsis),
                       ),
                       onPressed: () {
                         _c.text = query;
-                        _c.selection = TextSelection.collapsed(
-                          offset: query.length,
-                        );
+                        _c.selection = TextSelection.collapsed(offset: query.length);
                         _emit(query);
                         SearchHistory.remember(query);
                         _f.unfocus();
                       },
+                      onDeleted: () async {
+                        await SearchHistory.forget(query);
+                        if (mounted) setState(() {});
+                      },
                     ),
+                  TextButton(
+                    key: const ValueKey('search-history-clear'),
+                    onPressed: () async {
+                      await SearchHistory.clear();
+                      if (mounted) setState(() {});
+                    },
+                    child: Text('मिटाएँ', style: GText.sans(size: 12.5, weight: FontWeight.w700, color: GColors.maroon)),
                   ),
-              ],
+                ],
+              ),
             ),
           ),
       ]);

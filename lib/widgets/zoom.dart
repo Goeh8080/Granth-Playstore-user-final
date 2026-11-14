@@ -53,6 +53,20 @@ class ZoomStage extends StatefulWidget {
 }
 
 class ZoomStageState extends State<ZoomStage> with SingleTickerProviderStateMixin {
+  static final Set<ZoomStageState> _live = {};
+
+  /// Back while a picture is zoomed: back to 1× first (true), the viewer stays open.
+  static bool resetAny() {
+    var any = false;
+    for (final st in _live.toList()) {
+      if (st.mounted && st._v.scale > 1.01) {
+        st._animateTo(ZoomView.identity);
+        any = true;
+      }
+    }
+    return any;
+  }
+
   ZoomView _v = ZoomView.identity;
   ZoomView _start = ZoomView.identity;
   Offset _focal0 = Offset.zero;
@@ -76,11 +90,13 @@ class ZoomStageState extends State<ZoomStage> with SingleTickerProviderStateMixi
   @override
   void initState() {
     super.initState();
+    _live.add(this);
     _anim.addListener(() => setState(() => _v = ZoomView.lerp(_animFrom, _animTo, _curve.transform(_anim.value))));
   }
 
   @override
   void dispose() {
+    _live.remove(this);
     _anim.dispose();
     super.dispose();
   }

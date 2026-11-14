@@ -354,6 +354,11 @@ void main() {
       await b.up();
       await settle(t, 4);
       expect(st.view.scale, greaterThan(1.5));
+      // Back #1 zooms the picture out (viewer stays), Back #2 closes the viewer.
+      await t.binding.handlePopRoute();
+      await settle(t, 8);
+      expect(find.byType(ZoomStage), findsWidgets);
+      expect(st.view.scale, closeTo(1, 0.01));
       await t.binding.handlePopRoute();
       await settle(t, 8);
       expect(find.byType(ZoomStage), findsNothing);

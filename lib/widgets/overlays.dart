@@ -231,7 +231,14 @@ class _Lightbox extends StatelessWidget {
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final stageH = (size.height * 0.78).clamp(0.0, 920.0);
-    return Material(
+    // Back: a zoomed picture zooms out first; the next Back closes the viewer (and only it).
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || ZoomStageState.resetAny()) return;
+        Navigator.of(context).pop();
+      },
+      child: Material(
       color: GColors.lightbox,
       child: SafeArea(
         child: Padding(
@@ -263,6 +270,8 @@ class _Lightbox extends StatelessWidget {
                         height: stageH,
                         child: ZoomStage(
                           key: ValueKey('zoom-$i'),
+                          maxScale: 8, // full-resolution page: read the smallest letters
+                          doubleTapScale: 3,
                           child: Center(
                             child: GranthImage(path: paths[i], kind: ShotKind.lightbox, heroTag: i == 0 ? heroTag : null),
                           ),
@@ -277,6 +286,6 @@ class _Lightbox extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ));
   }
 }

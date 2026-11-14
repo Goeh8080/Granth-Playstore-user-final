@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../widgets/zoom.dart';
 import '../ai/navigator/voice_navigator.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/services.dart';
@@ -221,6 +222,9 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
       f.unfocus();
       return;
     }
+    // Zoom first: Back zooms a zoomed picture out to 1× before it leaves the page. (The whole-app
+    // pinch zoom is a reading preference and stays as it is across pages.)
+    if (ZoomStageState.resetAny()) return;
     if (_deckOpen) {
       _closeDeck();
       return;

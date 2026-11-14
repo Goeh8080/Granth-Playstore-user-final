@@ -138,10 +138,11 @@ class _GranthImageState extends State<GranthImage> {
         height: thumb ? 52 : null,
         fit: thumb ? BoxFit.cover : (widget.kind == ShotKind.lightbox ? BoxFit.contain : BoxFit.fitWidth),
         gaplessPlayback: true,
-        // 100% quality: the original file at full resolution while zoomed / in the viewer;
+        // 100% quality: the original file at full resolution for a praman picture (t365), while
+        // zoomed and in the viewer;
         // otherwise decoded at the full screen width in physical pixels (a picture is never shown
         // wider than that unzoomed; works inside IntrinsicHeight grids), never upscaled.
-        cacheWidth: zoomed || widget.kind == ShotKind.lightbox ? null : displayDecodeWidth(context, thumb ? 52 : MediaQuery.sizeOf(context).width),
+        cacheWidth: zoomed || widget.kind == ShotKind.lightbox || widget.kind == ShotKind.proof ? null : displayDecodeWidth(context, thumb ? 52 : MediaQuery.sizeOf(context).width),
         filterQuality: FilterQuality.high,
         frameBuilder: (context, child, frame, sync) {
           if (frame != null && _ratio == null && _wantsRatio) _learn();

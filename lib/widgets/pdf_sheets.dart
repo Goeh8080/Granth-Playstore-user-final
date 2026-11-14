@@ -71,20 +71,18 @@ Future<void> askPdf(BuildContext context, PdfRequest req, {GlobalKey? cardKey}) 
   final choice = await showPop<Object>(context, (ctx) => _StyleSheet(initial: UiPrefs.I.pdfStyle,
       card: cardKey != null && req is GranthPdfRequest));
   if (choice == 'card' && cardKey != null && req is GranthPdfRequest) {
+    // The card is captured right away (it is on screen now); writing the PDF then runs like
+    // every other PDF: progress row, gallery, "PDF तैयार" (t365: before, a tall card — पुराण,
+    // वेद … — failed as one GPU picture and only a toast said so).
     try {
       // The dialog has closed; wait for the card's next paint before capturing it.
       await WidgetsBinding.instance.endOfFrame;
-      final file = await CardPdf.build(
-        cardKey,
-        CardPdf.fileName(req.granth.title),
-      );
-      if (file == null) {
+      final shot = await CardPdf.capture(cardKey);
+      if (shot == null) {
         Toast.show('कार्ड PDF नहीं बन सका');
         return;
       }
-      Toast.show(
-        await CardPdf.save(file) ? 'कार्ड PDF सेव हो गई' : 'सेव नहीं हो सका',
-      );
+      PdfQueue.I.cardPdf(req.granth, shot);
     } catch (_) {
       Toast.show('कार्ड PDF नहीं बन सका');
     }
@@ -844,7 +842,8 @@ class _SettingsState extends State<_Settings> {
                       Pill(key: const ValueKey('set-nav-wake-on'), direct: true, label: 'चालू', tone: VoiceNavigator.I.wakeOn ? PillTone.maroon : PillTone.plain, onTap: () => VoiceNavigator.I.setWake(true)),
                       Pill(key: const ValueKey('set-nav-wake-off'), direct: true, label: 'बंद (माइक बटन से)', tone: VoiceNavigator.I.wakeOn ? PillTone.plain : PillTone.maroon, onTap: () => VoiceNavigator.I.setWake(false)),
                     ]),
-                  if (VoiceNavigator.I.optedIn)
+                  // Admin locked the voice (ui.navigator_voice_locked): no picker.
+                  if (VoiceNavigator.I.optedIn && !RemoteConfig.I.navigatorVoiceLocked)
                     _block('नेविगेटर की आवाज़ (या बोलें "आवाज़ बदलो")', [
                       Pill(key: const ValueKey('set-nav-voice-pick'), direct: true, label: 'आवाज़ चुनें', tone: PillTone.plain, onTap: () => showNavVoiceSheet(context, speaker: VoiceNavigator.I.speaker)),
                     ]),

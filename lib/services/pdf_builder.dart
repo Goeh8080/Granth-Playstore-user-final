@@ -453,8 +453,91 @@ List<List<String>> _pagesOf(List<String> lines, double size, double maxH) {
   return (w: w * i, h: h * i);
 }
 
+/// One line of the विषय सूची (contents): a praman, its topic, a short description and the page
+/// it starts on (t365: "PDF में पेज नंबर, डिस्क्रिप्शन और टॉपिक के साथ विषय सूची").
+class PdfContentsRow {
+  const PdfContentsRow(this.title, this.topic, this.description, this.page);
+  final String title;
+  final String topic;
+  final String description;
+  final int page;
+}
+
+const double _tocTop = 104, _tocTopNext = 44, _tocBottom = 40, _tocRowH = 44;
+
+/// Rows that fit on contents page [i] (the first one has the heading).
+int tocRowsOnPage(int i) => ((_a4h - (i == 0 ? _tocTop : _tocTopNext) - _tocBottom) / _tocRowH).floor();
+
+/// Contents pages needed for [rows] rows — fixed row height, so known before the book is built.
+int tocPageCount(int rows) {
+  var n = 0;
+  for (var left = rows; left > 0; n++) {
+    left -= tocRowsOnPage(n);
+  }
+  return n;
+}
+
+ui.Paragraph _line1(String text, ui.TextStyle style, double width, {TextAlign align = TextAlign.left}) {
+  final b = ui.ParagraphBuilder(ui.ParagraphStyle(textAlign: align, textDirection: TextDirection.ltr, maxLines: 1, ellipsis: '…'))
+    ..pushStyle(style)
+    ..addText(text.replaceAll(RegExp(r'\s+'), ' ').trim());
+  return b.build()..layout(ui.ParagraphConstraints(width: width));
+}
+
+/// Draws one contents page (2× resolution) as RGBA pixels.
+Future<_TextImage?> _renderContents(List<PdfContentsRow> rows, {required bool first, required int startIndex, required int total}) async {
+  const k = 2.0;
+  final pw = (_a4w * k).round(), ph = (_a4h * k).round();
+  final rec = ui.PictureRecorder();
+  final c = ui.Canvas(rec);
+  c.drawRect(ui.Rect.fromLTWH(0, 0, pw.toDouble(), ph.toDouble()), ui.Paint()..color = GColors.paper);
+  const mx = 40.0 * k;
+  final w = pw - mx * 2;
+  var y = 0.0;
+  if (first) {
+    final h = _line1('विषय सूची', _uiStyle(size: 26 * k, color: GColors.maroon, weight: FontWeight.w700, family: GFonts.display, fallback: GFonts.displayFallback), w, align: TextAlign.center);
+    c.drawParagraph(h, ui.Offset(mx, 30 * k));
+    final sub = _line1('$total प्रमाण · पेज नंबर के साथ', _uiStyle(size: 11 * k, color: GColors.brown, weight: FontWeight.w600), w, align: TextAlign.center);
+    c.drawParagraph(sub, ui.Offset(mx, 30 * k + h.height + 2 * k));
+    final ly = (_tocTop - 14) * k;
+    c.drawLine(ui.Offset(pw / 2 - 90 * k, ly), ui.Offset(pw / 2 + 90 * k, ly), ui.Paint()..color = GColors.gold..strokeWidth = 1.5 * k);
+    y = _tocTop * k;
+  } else {
+    y = _tocTopNext * k;
+  }
+  const numW = 52.0 * k, idxW = 30.0 * k;
+  for (final (i, r) in rows.indexed) {
+    final top = y + i * _tocRowH * k;
+    final idx = _line1('${startIndex + i + 1}.', _uiStyle(size: 11 * k, color: GColors.brown, weight: FontWeight.w600), idxW);
+    c.drawParagraph(idx, ui.Offset(mx, top + 3 * k));
+    final t = _line1(r.title, _uiStyle(size: 13 * k, color: GColors.maroon, weight: FontWeight.w700), w - idxW - numW);
+    c.drawParagraph(t, ui.Offset(mx + idxW, top));
+    final detail = [if (r.topic.isNotEmpty) 'विषय: ${r.topic}', if (r.description.isNotEmpty) r.description].join(' · ');
+    if (detail.isNotEmpty) {
+      final d = _line1(detail, _uiStyle(size: 10 * k, color: GColors.brown), w - idxW - numW);
+      c.drawParagraph(d, ui.Offset(mx + idxW, top + t.height + 1 * k));
+    }
+    final n = _line1('${r.page}', _uiStyle(size: 13 * k, color: GColors.maroon, weight: FontWeight.w700), numW, align: TextAlign.right);
+    c.drawParagraph(n, ui.Offset(pw - mx - numW, top));
+    final sep = top + (_tocRowH - 4) * k;
+    c.drawLine(ui.Offset(mx, sep), ui.Offset(pw - mx, sep), ui.Paint()..color = GColors.goldLight..strokeWidth = 1 * k);
+  }
+  final image = await _guardRender(rec.endRecording().toImage(pw, ph));
+  final data = await _guardRender(image.toByteData(format: ui.ImageByteFormat.rawRgba));
+  image.dispose();
+  if (data == null) return null;
+  return _TextImage(data.buffer.asUint8List(), pw, ph, _a4w, _a4h);
+}
+
 class BookPdfBuilder {
-  BookPdfBuilder({this.isCancelled, this.onPage, this.onPreview, this.repair, this.lookAhead = 8, this.maxImageBytes = kPassBytes, this.maxHeldBytes = 64 << 20});
+  BookPdfBuilder({this.isCancelled, this.onPage, this.onPreview, this.repair, this.lookAhead = 8, this.maxImageBytes = kPassBytes, this.maxHeldBytes = 64 << 20, this.contents = false});
+
+  /// "PDF विषय के साथ": a विषय सूची (contents) after the cover pages — every praman with its topic,
+  /// description and page number. Never in "केवल चित्र" (pictures only).
+  final bool contents;
+
+  /// The contents rows of the last build (empty when it had none).
+  List<PdfContentsRow> contentsRows = const [];
 
   /// Round 7: a page picture that fails its checks is handed here once (delete it, download
   /// it again with priority); returns the fresh file, or null when that is impossible now.
@@ -791,7 +874,17 @@ class BookPdfBuilder {
       }
 
       final workers = List.generate(math.min(6, o.length), (_) => worker());
+      // विषय सूची: its page count is known up front (one fixed-height row per praman), so every
+      // page after it is numbered right while streaming; it is drawn last and put in place.
+      contentsRows = const [];
+      final toc = contents && style != PdfStyle.original;
+      final lead = toc ? o.takeWhile((x) => x.cover || x.topicCover).length : 0;
+      final entries = toc ? [for (var e = lead; e < o.length; e++) if (!o[e].cover && !o[e].topicCover) e] : const <int>[];
+      final tocPages = tocPageCount(entries.length);
+      var tocAt = 0;
+      final startPage = <int, int>{};
       for (var e = 0; e < o.length; e++) {
+        if (e == lead) tocAt = _pageCount;
         _check();
         while (prepared[e] == null) {
           await Future<void>.delayed(const Duration(milliseconds: 4));
@@ -805,9 +898,11 @@ class BookPdfBuilder {
         }
         // A drawing error fails the whole PDF (retried by the queue) — never a blank page.
         await _spec(o[e], pic, style, e == 0);
+        final shift = e >= lead ? tocPages : 0;
+        startPage[e] = _pageCount + 1 + shift;
         if (style != PdfStyle.original || o[e].topicCover) {
           for (var t = 0; t < _pending.length; t++) {
-            _stamp(_pending[t], _pageCount + t + 1);
+            _stamp(_pending[t], _pageCount + t + 1 + shift);
           }
         }
         await flush();
@@ -819,6 +914,26 @@ class BookPdfBuilder {
       }
       await Future.wait(workers);
       _check();
+      if (tocPages > 0) {
+        String clean(String v, Set<String> not) => not.contains(v.trim()) ? '' : v.trim();
+        final rows = [
+          for (final e in entries)
+            PdfContentsRow(o[e].title.trim(), clean(o[e].subtitle, {o[e].title.trim()}), clean(o[e].body, {o[e].title.trim(), o[e].subtitle.trim()}), startPage[e] ?? 0),
+        ];
+        var k = 0;
+        for (var i = 0; i < tocPages; i++) {
+          _check();
+          final chunk = rows.sublist(k, math.min(rows.length, k + tocRowsOnPage(i)));
+          final img = await _renderContents(chunk, first: i == 0, startIndex: k, total: rows.length);
+          if (img == null) throw StateError('contents not drawn');
+          k += chunk.length;
+          final page = _page(_a4w, _a4h, GColors.paper)..insertAt = tocAt + i;
+          _img(page, _rgbaImage(img), 0, 0, _a4w, _a4h);
+          _stamp(page, tocAt + i + 1);
+        }
+        await flush();
+        contentsRows = rows;
+      }
       if (_pageCount == 0) {
         _page(_a4w, _a4h, const Color(0xFFFFFFFF));
         await flush();

@@ -16,6 +16,7 @@ import 'gallery_service.dart';
 import 'image_cache.dart';
 import 'native_bridge.dart';
 import 'order.dart';
+import 'card_pdf.dart';
 import 'pdf_builder.dart';
 import 'pdf_notify.dart';
 import 'storage.dart';
@@ -537,7 +538,7 @@ class PdfQueue extends ChangeNotifier {
   /// `jh` — make sure every page picture is on the device and whole (8 at a time, priority
   /// downloads), then assemble. Round 7: a page that cannot be fetched fails the PDF with a
   /// clear message (auto-retried when online) — the PDF never gets blank pages.
-  static Future<String> _assemble(List<PdfSpec> specs, PdfStyle style, PdfJob job, void Function(PdfPhase, int, int) report) async {
+  static Future<String> _assemble(List<PdfSpec> specs, PdfStyle style, PdfJob job, void Function(PdfPhase, int, int) report, {bool contents = false}) async {
     final a = math.max(1, specs.length);
     report(PdfPhase.images, 0, a);
     var loaded = 0;
@@ -572,6 +573,7 @@ class PdfQueue extends ChangeNotifier {
     final builder = BookPdfBuilder(
       lookAhead: p.pdfLookAhead,
       maxHeldBytes: p.pdfHeldBytes,
+      contents: contents,
       isCancelled: () => job.cancelled,
       onPage: (d, t) => report(PdfPhase.pages, d, t),
       onPreview: (b) => job.preview = b,
@@ -611,7 +613,7 @@ class PdfQueue extends ChangeNotifier {
       pages: specs.length,
     );
     start(job, (job, report) async {
-      final built = await _assemble(specs, style, job, report);
+      final built = await _assemble(specs, style, job, report, contents: true);
       report(PdfPhase.save, specs.length, specs.length);
       await _toGallery(job, built, id: 'pdf-granth-${g.id}', title: g.title, text: g.description, granth: g.title);
       CatalogStore.I.markOffline([g.id]);
@@ -640,7 +642,7 @@ class PdfQueue extends ChangeNotifier {
       pages: r.specs.length,
     );
     start(job, (job, report) async {
-      final built = await _assemble(r.specs, style, job, report);
+      final built = await _assemble(r.specs, style, job, report, contents: true);
       report(PdfPhase.save, r.specs.length, r.specs.length);
       await _toGallery(job, built, id: 'pdf-topic-${t.id}', title: t.title, text: t.description, topic: t.title);
       CatalogStore.I.markOffline(r.granthIds);
@@ -681,6 +683,30 @@ class PdfQueue extends ChangeNotifier {
       );
       CatalogStore.I.markOffline(ids);
       return built;
+    });
+  }
+
+  /// "ग्रंथ कार्ड PDF": the card as captured on screen, made like every other PDF — its own
+  /// progress row, saved in the app gallery and the "PDF तैयार" card when done.
+  PdfJob cardPdf(Granth g, CardShot shot) {
+    final job = PdfJob(
+      id: _id(),
+      title: '${g.title} — कार्ड',
+      fileName: CardPdf.fileName(g.title),
+      galleryId: 'pdf-card-${g.id}',
+      granth: g.title,
+      granthId: g.id,
+      text: g.description,
+    );
+    return start(job, (job, report) async {
+      report(PdfPhase.images, 1, 1);
+      final out = workPath(job);
+      report(PdfPhase.pages, 0, 1);
+      await CardPdf.write(shot, out);
+      report(PdfPhase.pages, 1, 1);
+      report(PdfPhase.save, 1, 1);
+      await _toGallery(job, out, id: 'pdf-card-${g.id}', title: '${g.title} — कार्ड', text: g.description, granth: g.title);
+      return out;
     });
   }
 

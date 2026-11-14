@@ -145,6 +145,10 @@ class PdfPageData {
   final List<PdfOp> ops = [];
   final List<PdfPicture> pictures = [];
 
+  /// Where this page goes in the finished page order (0-based); null = after the pages so far.
+  /// Lets a page written late (the विषय सूची) sit near the front of the PDF.
+  int? insertAt;
+
   int addPicture(PdfPicture p) {
     pictures.add(p);
     return pictures.length - 1;
@@ -268,7 +272,12 @@ class PdfStreamWriter {
         '<< /Type /Page /Parent $_pages 0 R /MediaBox [0 0 ${_n(p.w)} ${_n(p.h)}] '
         '/Resources << /XObject << ${names.join(' ')} >> /Font << /F1 $_font 0 R >> /ExtGState << /G1 $_gs 0 R >> >> '
         '/Contents $contentId 0 R >>');
-    _kids.add(pageId);
+    final at = p.insertAt;
+    if (at != null && at >= 0 && at < _kids.length) {
+      _kids.insert(at, pageId);
+    } else {
+      _kids.add(pageId);
+    }
   }
 
   /// Finishes the file (page tree, catalog, xref) and returns its size in bytes.

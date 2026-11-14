@@ -209,7 +209,7 @@ void main() {
       final again = await settle(tester, until: (j) => j.phase == PdfPhase.done || (j.phase == PdfPhase.error && j.attempts > 1 && !j.active && hits > 12));
       expect(again.phase, PdfPhase.done, reason: again.error);
       final pdf = await tester.runAsync(() => File(again.filePath!).readAsBytes());
-      expect(pdfPages(pdf!), 6);
+      expect(pdfPages(pdf!), 7, reason: '6 pages + the विषय सूची page (PDF विषय के साथ)');
     });
   });
 }

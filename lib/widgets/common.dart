@@ -680,35 +680,34 @@ class GridSwitch extends StatelessWidget {
   final ValueChanged<int> onChanged;
 
   Widget _wide(BuildContext context) {
-    const h = 44.0;
+    // v2 (ref1–3): a slim pill (≈42 dp with the rim), not the old tall bar.
+    const h = 34.0;
     final idx = math.max(0, options.indexOf(value));
     final box = LayoutBuilder(builder: (context, c) {
       final w = ((c.maxWidth.isFinite ? c.maxWidth : 300.0) - 8 - 2.4) / options.length; // padding + gold rim
       return Container(
         height: h + 8,
         padding: const EdgeInsets.all(4),
+        // t408: old flat colours (paper, creamDark rim, solid maroon thumb) — no gloss.
         decoration: BoxDecoration(
-          gradient: const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFFFFDF7), Color(0xFFF8EEDA)]),
-          border: Border.all(color: GColors.goldLight, width: 1.2),
+          color: GColors.paper,
+          border: Border.all(color: GColors.creamDark, width: 1.2),
           borderRadius: BorderRadius.circular(999),
-          boxShadow: [BoxShadow(color: GColors.gold.withValues(alpha: 0.18), blurRadius: 10, offset: const Offset(0, 4))],
         ),
         child: Stack(children: [
           for (var i = 1; i < options.length; i++)
-            Positioned(left: i * w - 0.5, top: 10, bottom: 10, child: Container(width: 1, color: GColors.gold.withValues(alpha: 0.35))),
+            Positioned(left: i * w - 0.5, top: 8, bottom: 8, child: Container(width: 1, color: GColors.gold.withValues(alpha: 0.35))),
+          // Smooth at 120 Hz: one implicit slide (180 ms, easeOutCubic) in its own layer.
           AnimatedPositioned(
-            duration: const Duration(milliseconds: 260),
+            duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
             left: idx * w,
             top: 0,
             width: w,
             height: h,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFB02239), GColors.maroon, Color(0xFF5E0E1D)]),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: GColors.goldLight, width: 1.4),
-                boxShadow: [BoxShadow(color: GColors.maroon.withValues(alpha: 0.30), blurRadius: 8, offset: const Offset(0, 3))],
+            child: RepaintBoundary(
+              child: DecoratedBox(
+                decoration: BoxDecoration(color: GColors.maroon, borderRadius: BorderRadius.circular(999)),
               ),
             ),
           ),
@@ -725,8 +724,8 @@ class GridSwitch extends StatelessWidget {
                     height: h,
                     child: Center(
                       child: AnimatedDefaultTextStyle(
-                        duration: const Duration(milliseconds: 200),
-                        style: GText.sans(size: 16, weight: FontWeight.w700, color: options[i] == value ? GColors.paper : GColors.brown),
+                        duration: const Duration(milliseconds: 160),
+                        style: GText.sans(size: 14.5, weight: FontWeight.w700, color: options[i] == value ? GColors.paper : GColors.brown),
                         child: Text('${options[i]}×${options[i]}'),
                       ),
                     ),
@@ -866,12 +865,10 @@ class _SearchFieldState extends State<SearchField> {
     final rounded = widget.rounded;
     final base = BoxDecoration(
       color: GColors.paper,
-      gradient: rounded ? const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFFFFEFA), Color(0xFFFBF3E2)]) : null,
+      gradient: null,
       borderRadius: BorderRadius.circular(rounded ? 999 : 10),
-      border: Border.all(color: focus ? GColors.saffron : (rounded ? GColors.goldLight : GColors.creamDark), width: rounded ? 1.2 : 1.5),
-      boxShadow: focus
-          ? [BoxShadow(color: GColors.saffron.withValues(alpha: 0.18), spreadRadius: 3)]
-          : (rounded ? [BoxShadow(color: GColors.gold.withValues(alpha: 0.16), blurRadius: 10, offset: const Offset(0, 4))] : const []),
+      border: Border.all(color: focus ? GColors.saffron : GColors.creamDark, width: rounded ? 1.2 : 1.5),
+      boxShadow: focus ? [BoxShadow(color: GColors.saffron.withValues(alpha: 0.18), spreadRadius: 3)] : const [],
     );
     // Card style reaches the search box too; the saffron focus ring always wins.
     return Column(
@@ -887,15 +884,16 @@ class _SearchFieldState extends State<SearchField> {
         onChanged: _changed,
         onSubmitted: (v) { _emit(v); SearchHistory.remember(v); },
         onTapOutside: (_) => _f.unfocus(),
-        style: GText.sans(size: 16, color: GColors.text),
+        style: GText.sans(size: rounded ? 14.5 : 16, color: GColors.text),
         cursorColor: GColors.saffron,
         textInputAction: TextInputAction.search,
         decoration: InputDecoration(
           isDense: true,
           border: InputBorder.none,
           hintText: widget.placeholder,
-          hintStyle: GText.sans(size: 16, color: GColors.muted.withValues(alpha: 0.8)),
-          contentPadding: EdgeInsets.symmetric(horizontal: rounded ? 4 : 14, vertical: rounded ? 13 : 11),
+          hintStyle: GText.sans(size: rounded ? 14.5 : 16, color: GColors.muted.withValues(alpha: 0.8)),
+          // v2 (ref1–3): the Granth tab's rounded bar is compact (≈42 dp tall).
+          contentPadding: EdgeInsets.symmetric(horizontal: rounded ? 4 : 14, vertical: rounded ? 11 : 11),
         ),
       )),
     )),
@@ -954,17 +952,17 @@ extension on _SearchFieldState {
   Widget _decorate(Widget field) {
     if (!widget.rounded && widget.onFilter == null) return field;
     return Row(children: [
-      if (widget.rounded) const Padding(padding: EdgeInsets.only(left: 16, right: 8), child: GIcon('search', size: 20, color: GColors.brown)),
+      if (widget.rounded) const Padding(padding: EdgeInsets.only(left: 13, right: 6), child: GIcon('search', size: 18, color: GColors.brown)),
       Expanded(child: field),
       if (widget.onFilter != null) ...[
-        Container(width: 1, height: 24, color: GColors.gold.withValues(alpha: 0.4)),
+        Container(width: 1, height: 22, color: GColors.gold.withValues(alpha: 0.4)),
         Semantics(
           button: true,
           label: 'दृश्य और फ़िल्टर',
           child: TapTarget(
             key: const ValueKey('search-filter'),
             onTap: widget.onFilter,
-            child: const Padding(padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12), child: GIcon('sliders', size: 20, color: GColors.brown)),
+            child: const Padding(padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10), child: GIcon('sliders', size: 19, color: GColors.brown)),
           ),
         ),
       ],

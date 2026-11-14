@@ -4,15 +4,19 @@
 /// Back on the app's first screen, so it leaves the app.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../services/firebase_bridge.dart';
 import '../services/file_actions.dart';
 import '../services/native_bridge.dart';
 import '../services/remote_config.dart';
 import '../services/storage.dart';
+import '../state/motion.dart';
 import '../state/toast.dart';
 import '../theme/colors.dart';
 import '../widgets/common.dart';
@@ -144,6 +148,22 @@ class LoginPage extends StatelessWidget {
   const LoginPage({super.key, required this.onSkip});
   final VoidCallback? onSkip;
 
+  static const _logo = 'assets/brand/app_logo.png';
+
+  Widget _feature(String icon, String label) => Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 46,
+          height: 46,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: GColors.paper, borderRadius: BorderRadius.circular(14), border: Border.all(color: GColors.goldLight)),
+          child: GIcon(icon, size: 20, color: GColors.maroon),
+        ),
+        const SizedBox(height: 6),
+        Text(label, style: GText.sans(size: 12, weight: FontWeight.w700, color: GColors.brown)),
+      ]);
+
+  /// t408 (approved 02-login-v1-logo): aurora background, "बाद में ›" top right, the arch card
+  /// with the real logo, the bottom sheet with Google sign-in. Same buttons and callbacks.
   @override
   Widget build(BuildContext context) => PopScope(
     canPop: false,
@@ -152,98 +172,215 @@ class LoginPage extends StatelessWidget {
     },
     child: Scaffold(
       backgroundColor: GColors.cream,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFFFF7EA), GColors.cream]),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(28, 16, 28, 20),
-            child: ListenableBuilder(
-              listenable: FirebaseBridge.I,
-              builder: (context, _) => Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Spacer(flex: 3),
-                  Center(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(36),
-                        boxShadow: [BoxShadow(color: GColors.saffron.withValues(alpha: 0.35), blurRadius: 40, spreadRadius: 4)],
-                      ),
-                      child: const LogoIcon(size: 120),
-                    ),
-                  ),
-                  const SizedBox(height: 26),
-                  Text(
-                    'ग्रंथ प्रबंधन',
-                    textAlign: TextAlign.center,
-                    style: GText.display(size: 34, color: GColors.maroon, letterSpacing: 0.5),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'सत ग्रंथों के प्रमाण, एक जगह',
-                    textAlign: TextAlign.center,
-                    style: GText.sans(size: 15.5, color: GColors.brown),
-                  ),
-                  const Spacer(flex: 2),
-                  Text(
-                    'लॉगिन करने पर आपका नाम, Gmail और आँकड़े अकाउंट में दिखेंगे।',
-                    textAlign: TextAlign.center,
-                    style: GText.sans(size: 13.5, color: GColors.muted, height: 1.45),
-                  ),
-                  const SizedBox(height: 16),
-                  GoogleSignInButton(
-                    key: const ValueKey('login-google'),
-                    busy: FirebaseBridge.I.busy,
-                    onTap: () async {
-                      final e = await FirebaseBridge.I.signIn();
-                      if (e != null) Toast.show(e);
-                    },
-                  ),
-                  // Round-2: the Toast layer lives in HomeShell, which is not mounted behind this
-                  // page, so progress and the error code are shown right here.
-                  if (FirebaseBridge.I.busy && FirebaseBridge.I.stage != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: Text(
-                        FirebaseBridge.I.stage!,
-                        key: const ValueKey('login-stage'),
-                        textAlign: TextAlign.center,
-                        style: GText.sans(size: 13.5, color: GColors.brown),
+      body: Stack(children: [
+        const Positioned.fill(child: AuroraBackground()),
+        SafeArea(
+          bottom: false,
+          child: ListenableBuilder(
+            listenable: FirebaseBridge.I,
+            builder: (context, _) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  height: 52,
+                  child: onSkip == null
+                      ? null
+                      : Align(
+                          alignment: Alignment.centerRight,
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 18),
+                            child: Pressable(
+                              key: const ValueKey('login-skip-top'),
+                              onTap: onSkip,
+                              child: Container(
+                                padding: const EdgeInsets.fromLTRB(16, 8, 10, 8),
+                                decoration: BoxDecoration(color: GColors.paper, borderRadius: BorderRadius.circular(999), border: Border.all(color: GColors.goldLight)),
+                                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                  Text('बाद में', style: GText.sans(size: 14, weight: FontWeight.w700, color: GColors.maroon)),
+                                  const SizedBox(width: 4),
+                                  const GIcon('chevron-right', size: 16, color: GColors.maroon),
+                                ]),
+                              ),
+                            ),
+                          ),
+                        ),
+                ),
+                Expanded(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 28),
+                      child: Container(
+                        key: const ValueKey('login-arch'),
+                        constraints: const BoxConstraints(maxWidth: 400),
+                        padding: const EdgeInsets.fromLTRB(20, 40, 20, 24),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFFDF7).withValues(alpha: 0.72),
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(200), bottom: Radius.circular(28)),
+                          border: Border.all(color: GColors.goldLight, width: 1.2),
+                        ),
+                        child: Column(mainAxisSize: MainAxisSize.min, children: [
+                          Image.asset(_logo, width: 236, filterQuality: FilterQuality.medium, semanticLabel: 'ग्रंथ प्रबंधन'),
+                          const SizedBox(height: 14),
+                          Text('सत ग्रंथों के प्रमाण, एक जगह', textAlign: TextAlign.center, style: GText.sans(size: 15.5, weight: FontWeight.w600, color: GColors.brown)),
+                          const SizedBox(height: 22),
+                          Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+                            _feature('library', 'पवित्र ग्रंथ'),
+                            _feature('image', 'शास्त्र प्रमाण'),
+                            _feature('sparkles', 'तत्त्व AI'),
+                          ]),
+                        ]),
                       ),
                     ),
-                  if (!FirebaseBridge.I.busy && FirebaseBridge.I.error != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: SelectableText(
-                        FirebaseBridge.I.error!,
-                        key: const ValueKey('login-error'),
-                        textAlign: TextAlign.center,
-                        style: GText.sans(size: 13.5, color: const Color(0xFFB3261E)),
+                  ),
+                ),
+                Container(
+                  padding: EdgeInsets.fromLTRB(24, 22, 24, 14 + MediaQuery.paddingOf(context).bottom),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFFFDF7),
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                    boxShadow: [BoxShadow(color: Color(0x1A4A2C0A), blurRadius: 18, offset: Offset(0, -4))],
+                  ),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+                    if (onSkip != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text('लॉगिन वैकल्पिक है', textAlign: TextAlign.center, style: GText.sans(size: 13, weight: FontWeight.w700, color: GColors.saffronDark)),
                       ),
+                    Text(
+                      'लॉगिन करने पर आपका नाम, Gmail और आँकड़े अकाउंट में दिखेंगे।',
+                      textAlign: TextAlign.center,
+                      style: GText.sans(size: 13.5, color: GColors.muted, height: 1.45),
                     ),
-                  const SizedBox(height: 10),
-                  if (onSkip != null)
-                    Center(
-                      child: TextButton(
-                        key: const ValueKey('login-skip'),
-                        onPressed: onSkip,
+                    const SizedBox(height: 14),
+                    GoogleSignInButton(
+                      key: const ValueKey('login-google'),
+                      busy: FirebaseBridge.I.busy,
+                      onTap: () async {
+                        final e = await FirebaseBridge.I.signIn();
+                        if (e != null) Toast.show(e);
+                      },
+                    ),
+                    // Round-2: the Toast layer lives in HomeShell, which is not mounted behind this
+                    // page, so progress and the error code are shown right here.
+                    if (FirebaseBridge.I.busy && FirebaseBridge.I.stage != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10),
                         child: Text(
-                          'बाद में',
-                          style: GText.sans(size: 14.5, weight: FontWeight.w700, color: GColors.maroon),
+                          FirebaseBridge.I.stage!,
+                          key: const ValueKey('login-stage'),
+                          textAlign: TextAlign.center,
+                          style: GText.sans(size: 13.5, color: GColors.brown),
                         ),
                       ),
+                    if (!FirebaseBridge.I.busy && FirebaseBridge.I.error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: SelectableText(
+                          FirebaseBridge.I.error!,
+                          key: const ValueKey('login-error'),
+                          textAlign: TextAlign.center,
+                          style: GText.sans(size: 13.5, color: const Color(0xFFB3261E)),
+                        ),
+                      ),
+                    const SizedBox(height: 6),
+                    if (onSkip != null)
+                      Center(
+                        child: TextButton(
+                          key: const ValueKey('login-skip'),
+                          onPressed: onSkip,
+                          child: Text(
+                            'बाद में — बिना लॉगिन आगे बढ़ें',
+                            style: GText.sans(size: 14.5, weight: FontWeight.w700, color: GColors.brown),
+                          ),
+                        ),
+                      ),
+                    Text.rich(
+                      TextSpan(children: [
+                        const TextSpan(text: 'आगे बढ़ने पर '),
+                        TextSpan(text: 'नियम और शर्तें', style: GText.sans(size: 11.5, weight: FontWeight.w700, color: GColors.maroon).copyWith(decoration: TextDecoration.underline)),
+                        const TextSpan(text: ' व '),
+                        TextSpan(text: 'गोपनीयता नीति', style: GText.sans(size: 11.5, weight: FontWeight.w700, color: GColors.maroon).copyWith(decoration: TextDecoration.underline)),
+                        const TextSpan(text: ' लागू होंगी'),
+                      ]),
+                      textAlign: TextAlign.center,
+                      style: GText.sans(size: 11.5, color: GColors.muted),
                     ),
-                  const Spacer(),
-                ],
-              ),
+                  ]),
+                ),
+              ],
             ),
           ),
         ),
-      ),
+      ]),
     ),
   );
+}
+
+/// t408 (approved FLUTTER_ANIMATED_LOGIN_BG): cream gradient with 4 soft colour blobs on slow
+/// orbits (14 s loop, RadialGradient — no real blur). Still at t = 0 with reduced motion.
+class AuroraBackground extends StatefulWidget {
+  const AuroraBackground({super.key});
+  @override
+  State<AuroraBackground> createState() => _AuroraBackgroundState();
+}
+
+class _AuroraBackgroundState extends State<AuroraBackground> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 14));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (Motion.on(context)) {
+      if (!_c.isAnimating) _c.repeat();
+    } else {
+      _c.stop();
+      _c.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  Widget _blob(double t, double size, Color color, double r, bool cw, {double? l, double? rt, required double top}) {
+    final a = (cw ? 1 : -1) * 2 * math.pi * t;
+    return Positioned(
+      left: l,
+      right: rt,
+      top: top,
+      child: Transform.translate(
+        offset: Offset(math.cos(a), math.sin(a)) * r,
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(shape: BoxShape.circle, gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)])),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: _c,
+          builder: (_, _) {
+            final t = _c.value;
+            return Stack(fit: StackFit.expand, children: [
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFFFF8EA), Color(0xFFFDF3DC), Color(0xFFF6E6C4)]),
+                ),
+              ),
+              _blob(t, 260, const Color(0x80F5C878), 40, false, rt: -60, top: -60),
+              _blob(t, 340, const Color(0x61E8821A), 46, true, l: -90, top: 40),
+              _blob(t, 300, const Color(0x387B1F2E), 58, false, rt: -110, top: 180),
+              _blob(t, 360, const Color(0x66C9A84C), 52, true, l: 40, top: 430),
+            ]);
+          },
+        ),
+      );
 }
 
 /// Round-3: the terms page, shown after Google login and before the app. No skip; Back is the
@@ -283,12 +420,12 @@ class TermsPage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Center(child: LogoIcon(size: 72)),
+                      Center(child: Image.asset('assets/brand/app_book.png', width: 140, filterQuality: FilterQuality.medium)),
                       const SizedBox(height: 18),
                       Text(
                         'नियम और शर्तें',
                         textAlign: TextAlign.center,
-                        style: GText.display(size: 28, color: GColors.maroon),
+                        style: GText.display(size: 28, color: const Color(0xFF7B1F2E)),
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -300,9 +437,9 @@ class TermsPage extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: GColors.paper,
+                          color: const Color(0xFFFFFDF7),
                           borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: GColors.gold.withValues(alpha: 0.4)),
+                          border: Border.all(color: GColors.gold.withValues(alpha: 0.55)),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -371,7 +508,7 @@ class TermsPage extends StatelessWidget {
                         backgroundColor: GColors.maroon,
                         foregroundColor: GColors.paper,
                         minimumSize: const Size.fromHeight(50),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+                        shape: const StadiumBorder(),
                       ),
                       onPressed: onAccept,
                       child: Text(
@@ -386,6 +523,16 @@ class TermsPage extends StatelessWidget {
                       child: Text(
                         'अस्वीकार (लॉगआउट करें)',
                         style: GText.sans(size: 14, weight: FontWeight.w600, color: GColors.muted),
+                      ),
+                    ),
+                    // the app version, read at runtime
+                    FutureBuilder<PackageInfo>(
+                      future: PackageInfo.fromPlatform().catchError((Object _) => PackageInfo(appName: '', packageName: '', version: '', buildNumber: '')),
+                      builder: (context, snap) => Text(
+                        snap.data == null || snap.data!.version.isEmpty ? '' : 'ऐप संस्करण ${snap.data!.version}',
+                        key: const ValueKey('terms-app-version'),
+                        textAlign: TextAlign.center,
+                        style: GText.sans(size: 11.5, color: GColors.muted),
                       ),
                     ),
                   ],

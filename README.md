@@ -67,7 +67,7 @@ Requirements: Flutter 3.35+ (Dart ^3.9) and JDK 17. The release build is signed 
 debug key. No signing keys are kept in this repository. Add your own `key.properties` to sign for the Play Store.
 
 GitHub Actions (`.github/workflows/android-apk.yml`) builds the APK on every push and uploads it as the
-`granth-flutter-apk` (universal) and `granth-flutter-apk-arm64` artifacts.
+`Playstore-1.0.0-arm64.apk` and `Playstore-1.0.0.aab` artifacts (each the bare file, no zip).
 
 ## App key (analytics `X-App-Key`)
 

@@ -124,6 +124,11 @@ jobs:
             unzip -l dist/granth-arm64-v8a.apk | grep -q 'shorebird.yaml' || { echo "::error::APK is not a Shorebird build"; exit 1; }
           fi
           echo "APK Satlok cert OK (Gradle default v2/v3; v1 not required)"
+          "$BT/aapt2" dump badging dist/granth-arm64-v8a.apk > "$RUNNER_TEMP/badging.txt"
+          badge="$(grep -m1 '^package:' "$RUNNER_TEMP/badging.txt")"
+          echo "$badge"
+          echo "$badge" | grep -q "name='$EXPECTED_PACKAGE' versionCode='1' versionName='1.0.0'" \
+            || { echo "::error::APK package/version is not $EXPECTED_PACKAGE 1 / 1.0.0"; exit 1; }
 
       - name: Play Console checks on the AAB
         if: env.DO_SIGN == 'true'
@@ -186,25 +191,10 @@ jobs:
           cp "$AAB" "dist/Playstore-1.0.0.aab"
           cp dist/granth-arm64-v8a.apk "dist/Playstore-1.0.0-arm64.apk"
 
-      - uses: actions/upload-artifact@v4
-        if: env.DO_SIGN == 'true'
-        with:
-          name: granth-flutter-apk-arm64
-          path: dist/granth-arm64-v8a.apk
-          if-no-files-found: error
-          compression-level: 0
-
-      - uses: actions/upload-artifact@v4
-        if: env.DO_SIGN == 'true'
-        with:
-          name: granth-flutter-aab
-          path: dist/granth.aab
-          if-no-files-found: error
-          # an .aab is already a zip: store it, don't recompress it
-          compression-level: 0
-
-      # t370: the same files uploaded WITHOUT the artifact zip (upload-artifact v7 archive:false),
-      # so a browser download is a ready .aab / .apk (the zipped ones above stay for old scripts).
+      # t408: exactly TWO artifacts, each the bare file (upload-artifact v7 archive:false, no
+      # zip, no side files): Playstore-1.0.0-arm64.apk (install on a phone) and
+      # Playstore-1.0.0.aab (upload to Play Console). The old zipped granth-flutter-* copies
+      # are gone (nothing depended on them).
       - uses: actions/upload-artifact@v7
         if: env.DO_SIGN == 'true'
         with:

@@ -16,10 +16,18 @@ import 'pdf_stream.dart';
 /// text engine (correct Devanagari shaping with Noto Sans Devanagari) into images, exactly like
 /// the original drew text on a <canvas> before embedding it.
 
-enum PdfStyle { fill90, original }
+/// [card] (t408 "ग्रंथ कार्ड PDF"): every praman as its in-app card, one card per page, with
+/// the same cover pages and विषय सूची as "PDF विषय के साथ". Never saved as the default style.
+enum PdfStyle { fill90, original, card }
 
 PdfStyle pdfStyleFrom(String? v) => v == 'original' ? PdfStyle.original : PdfStyle.fill90;
 String pdfStyleId(PdfStyle s) => s == PdfStyle.original ? 'original' : 'fill90';
+
+/// A praman card drawn by the app (white-backed RGBA, [width]×[height] logical px).
+typedef CardRaster = ({Uint8List rgba, int w, int h, double width, double height});
+
+/// Draws [spec]'s praman ([PdfSpec.source]) as its in-app card; registered by the widgets layer.
+typedef CardRenderer = Future<CardRaster?> Function(PdfSpec spec);
 
 class PdfStyleOption {
   const PdfStyleOption(this.style, this.title, this.hint);
@@ -34,8 +42,13 @@ const pdfStyleOptions = [
 ];
 
 class PdfSpec {
-  PdfSpec({required this.title, this.subtitle = '', this.body = '', this.meta = '', this.path, this.cover = false, this.topicCover = false, this.image, this.file});
+  PdfSpec({required this.title, this.subtitle = '', this.body = '', this.meta = '', this.path, this.cover = false, this.topicCover = false, this.image, this.file, this.source, this.index = 0, this.total = 0});
   final String title;
+
+  /// The praman this page shows (card PDFs draw it as its in-app card), with its n/N.
+  final Object? source;
+  final int index;
+  final int total;
   final String subtitle;
   final String body;
   final String meta;
@@ -530,6 +543,9 @@ Future<_TextImage?> _renderContents(List<PdfContentsRow> rows, {required bool fi
 }
 
 class BookPdfBuilder {
+  /// Draws a praman card for [PdfStyle.card] (set by `PramanCardPdf.register`).
+  static CardRenderer? cardRenderer;
+
   BookPdfBuilder({this.isCancelled, this.onPage, this.onPreview, this.repair, this.lookAhead = 8, this.maxImageBytes = kPassBytes, this.maxHeldBytes = 64 << 20, this.contents = false});
 
   /// "PDF विषय के साथ": a विषय सूची (contents) after the cover pages — every praman with its topic,
@@ -759,9 +775,30 @@ class BookPdfBuilder {
     if (first && onPreview != null && enc.preview != null) onPreview!(enc.preview!);
   }
 
+  /// t408 — one praman card (as the app draws it) on an A4 page, fitted inside the margins.
+  Future<void> _cardPage(PdfSpec spec, PreparedImage? n, bool first) async {
+    final draw = cardRenderer;
+    if (draw == null) throw StateError('card renderer not registered');
+    if (n == null && spec.wantsPicture) throw PdfPageFailed(const []);
+    final r = await _guardRender(draw(spec));
+    if (r == null) throw StateError('card not drawn'); // retried; never a blank page
+    final enc = await compute(_coverJpeg, (rgba: r.rgba, w: r.w, h: r.h));
+    if (enc.jpeg == null) throw StateError('card not encoded');
+    const m = 22.0, bottom = 28.0; // bottom: room for the page number
+    final f = _fit(_a4w - m * 2, _a4h - m - bottom, r.width, r.height);
+    final page = _page(_a4w, _a4h, GColors.cream);
+    _img(page, PdfPicture.jpeg(enc.jpeg!, r.w, r.h), (_a4w - f.w) / 2, _a4h - m - f.h, f.w, f.h);
+    cardPages++;
+    if (first && onPreview != null && enc.preview != null) onPreview!(enc.preview!);
+  }
+
+  /// Card pages drawn by the last build (tests: one per praman).
+  int cardPages = 0;
+
   /// `rh`
   Future<void> _spec(PdfSpec spec, PreparedImage? n, PdfStyle style, bool first) async {
     if (spec.topicCover) return _topicCover(spec, first);
+    if (style == PdfStyle.card && !spec.cover && spec.source != null) return _cardPage(spec, n, first);
     if (style == PdfStyle.original) {
       if (n == null) {
         // Only pages that never had a picture get here (a missing picture fails the PDF).
@@ -803,6 +840,7 @@ class BookPdfBuilder {
   Future<int> buildToFile(List<PdfSpec> specs, PdfStyle style, String path, {bool isolate = true}) async {
     _pending.clear();
     _pageCount = 0;
+    cardPages = 0;
     final sink = await PdfSink.open(path, isolate: isolate);
     var ok = false;
     Future<void> lastWrite = Future.value();

@@ -46,6 +46,7 @@ flutter:
     - assets/highlighter/lib/
     - assets/fonts/NotoSansDevanagari-Full.ttf
     - shorebird.yaml
+    - assets/brand/
   fonts:
     - family: NotoDeva
       fonts:

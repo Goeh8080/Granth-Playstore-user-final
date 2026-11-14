@@ -472,7 +472,10 @@ class PdfQueue extends ChangeNotifier {
 
   // ---------- spec builders (Nh / Ph / Fh) ----------
 
-  static PdfSpec pramanSpec(Praman e) => PdfSpec(
+  static PdfSpec pramanSpec(Praman e, [int index = 0, int total = 0]) => PdfSpec(
+    source: e,
+    index: index,
+    total: total,
     title: e.title,
     subtitle: e.topicTitle,
     body: e.description.isNotEmpty ? e.description : (e.topicTitle.isNotEmpty ? e.topicTitle : e.title),
@@ -600,12 +603,16 @@ class PdfQueue extends ChangeNotifier {
 
   void granthPdf(Granth g, PdfStyle style) {
     final proofs = orderPramans(CatalogStore.I.pramans.where((p) => p.granthId == g.id).toList(), g.title);
-    final specs = [...granthSpecs(g), ...proofs.map(pramanSpec)];
+    final specs = [...granthSpecs(g), for (final (i, p) in proofs.indexed) pramanSpec(p, i + 1, proofs.length)];
+    // t408: "ग्रंथ कार्ड PDF" is its own file / gallery entry, never the हाईलाइट PDF's.
+    final card = style == PdfStyle.card;
+    final title = card ? '${g.title} — कार्ड' : g.title;
+    final galleryId = card ? 'pdf-card-${g.id}' : 'pdf-granth-${g.id}';
     final job = PdfJob(
       id: _id(),
-      title: g.title,
-      fileName: fileNameFor(g.title, 'granth-${g.id}'),
-      galleryId: 'pdf-granth-${g.id}',
+      title: title,
+      fileName: card ? CardPdf.fileName(g.title) : fileNameFor(g.title, 'granth-${g.id}'),
+      galleryId: galleryId,
       granth: g.title,
       granthId: g.id,
       text: [g.description, ...proofs.map((e) => e.title)].where((e) => e.isNotEmpty).join('\n'),
@@ -615,7 +622,7 @@ class PdfQueue extends ChangeNotifier {
     start(job, (job, report) async {
       final built = await _assemble(specs, style, job, report, contents: true);
       report(PdfPhase.save, specs.length, specs.length);
-      await _toGallery(job, built, id: 'pdf-granth-${g.id}', title: g.title, text: g.description, granth: g.title);
+      await _toGallery(job, built, id: galleryId, title: title, text: g.description, granth: g.title);
       CatalogStore.I.markOffline([g.id]);
       return built;
     });

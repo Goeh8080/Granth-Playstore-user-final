@@ -103,9 +103,10 @@ class _GranthsPanelState extends State<GranthsPanel> with LivePanel {
     );
     final grid = GridSwitch(locked: UiPrefs.I.gridLocked(gridPage), options: const [1, 2, 3], value: cols, wide: hero, onChanged: (v) => UiPrefs.I.setCols(Store.kGranthCols, v));
     if (hero) {
-      // t368: the redesigned top of the Granth tab (ref1–3): logo, serif title, temple,
-      // maroon PDF pill; then the full-width 1×1/2×2/3×3 pill and the rounded search bar
-      // stay pinned while the folders/cards scroll.
+      // v2 (ref1–3 placement): the header row (logo · title · temple · PDF pill), then the
+      // 1×1/2×2/3×3 pill and the rounded search bar, pinned while the folders/cards scroll.
+      // 1×1 stacks them (ref1: full-width pill, search under it); 2×2/3×3 put them side by
+      // side (ref3: pill left, search right). Tablets always side by side.
       return SliverMainAxisGroup(slivers: [
         SliverToBoxAdapter(
           child: Entry(
@@ -116,13 +117,18 @@ class _GranthsPanelState extends State<GranthsPanel> with LivePanel {
         ),
         StickyHeader(
           child: LayoutBuilder(builder: (context, c) {
-            final side = c.maxWidth >= 640;
+            final w = c.maxWidth.isFinite ? c.maxWidth : 400.0;
+            final side = w >= 640 || cols > 1;
             return side
-                ? Row(children: [SizedBox(width: 300, child: grid), const SizedBox(width: 12), Expanded(child: search)])
-                : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [grid, const SizedBox(height: 10), search]);
+                ? Row(key: const ValueKey('granth-tools-row'), children: [
+                    SizedBox(width: w >= 640 ? 300 : (w * 0.38).clamp(124.0, 170.0), child: grid),
+                    const SizedBox(width: 10),
+                    Expanded(child: search),
+                  ])
+                : Column(key: const ValueKey('granth-tools-stack'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [grid, const SizedBox(height: 8), search]);
           }),
         ),
-        const SliverToBoxAdapter(child: SizedBox(height: 14)),
+        const SliverToBoxAdapter(child: SizedBox(height: 6)),
         ..._body(idleOn, dx, rows, cols, pool),
       ]);
     }

@@ -10,7 +10,6 @@ import '../screens/home_shell.dart' show SyncStrip;
 import '../models/models.dart';
 import '../services/api.dart' show kPlayStoreUrl;
 import '../services/catalog_store.dart';
-import '../services/card_pdf.dart';
 import '../services/file_actions.dart';
 import '../services/firebase_bridge.dart';
 import '../services/gallery_service.dart';
@@ -28,6 +27,7 @@ import 'common.dart';
 import 'granth_view_setting.dart';
 import 'overlays.dart';
 import 'pop.dart';
+import 'praman_card_pdf.dart';
 
 /// What the user asked a PDF of (`zh({kind…})`).
 sealed class PdfRequest {}
@@ -68,25 +68,19 @@ void _run(PdfRequest r, PdfStyle s) {
 }
 
 /// `Bh` — "PDF शैली" picker, then queue the job.
+///
+/// t408: "ग्रंथ कार्ड PDF" is offered for every granth PDF (a granth card's हाईलाइट PDF button and
+/// "Multiple granth PDF"). It used to capture only the granth's own card on screen as ONE page
+/// (the root cause of "card PDF does not work": no praman was in it, and Multiple granth PDF
+/// never offered it). Now it is a granth PDF like the हाईलाइट PDF — same queue, progress, open
+/// and share — with every praman as its in-app card and the विषय सूची. [cardKey] is kept for
+/// callers; it is no longer needed.
 Future<void> askPdf(BuildContext context, PdfRequest req, {GlobalKey? cardKey}) async {
-  final choice = await showPop<Object>(context, (ctx) => _StyleSheet(initial: UiPrefs.I.pdfStyle,
-      card: cardKey != null && req is GranthPdfRequest));
-  if (choice == 'card' && cardKey != null && req is GranthPdfRequest) {
-    // The card is captured right away (it is on screen now); writing the PDF then runs like
-    // every other PDF: progress row, gallery, "PDF तैयार" (t365: before, a tall card — पुराण,
-    // वेद … — failed as one GPU picture and only a toast said so).
-    try {
-      // The dialog has closed; wait for the card's next paint before capturing it.
-      await WidgetsBinding.instance.endOfFrame;
-      final shot = await CardPdf.capture(cardKey);
-      if (shot == null) {
-        Toast.show('कार्ड PDF नहीं बन सका');
-        return;
-      }
-      PdfQueue.I.cardPdf(req.granth, shot);
-    } catch (_) {
-      Toast.show('कार्ड PDF नहीं बन सका');
-    }
+  final granthPdf = req is GranthPdfRequest || req is MultiGranthPdfRequest;
+  final choice = await showPop<Object>(context, (ctx) => _StyleSheet(initial: UiPrefs.I.pdfStyle, card: granthPdf));
+  if (choice == 'card' && granthPdf) {
+    PramanCardPdf.register();
+    _run(req, PdfStyle.card); // not saved as the default style
     return;
   }
   if (choice is! PdfStyle) return;
@@ -110,7 +104,7 @@ class _StyleSheetState extends State<_StyleSheet> {
       SheetHead(title: 'PDF शैली', onBack: () => Navigator.pop(context)),
       for (final o in pdfStyleOptions) ...[StyleOption(title: o.title, hint: o.hint, on: _s == o.style, onTap: () => setState(() => _s = o.style)), const SizedBox(height: 8)],
       if (widget.card) ...[
-        StyleOption(key: const ValueKey('granth-card-pdf-option'), title: 'ग्रंथ कार्ड PDF', hint: 'जैसा कार्ड ऐप में दिखता है — फ़ोन में सेव करें', on: _s == 'card', onTap: () => setState(() => _s = 'card')),
+        StyleOption(key: const ValueKey('granth-card-pdf-option'), title: 'ग्रंथ कार्ड PDF', hint: 'हर प्रमाण का कार्ड, जैसा ऐप में दिखता है — विषय सूची के साथ', on: _s == 'card', onTap: () => setState(() => _s = 'card')),
         const SizedBox(height: 8),
       ],
       const SizedBox(height: 4),

@@ -242,6 +242,11 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
 
   /// The floating "Ask Tatv AI" button: everywhere except the AI chat (it has its own composer),
   /// and not when the admin has turned AI off.
+  /// v2 (ref1–3): on the Granth tab's top level the page itself starts with the "Granths"
+  /// header row, so the app bar is one slim row (menu · logo · gallery · settings · account)
+  /// with slim one-line stats and the menu button moved into it. Every action stays.
+  static bool _slimMast(GRoute r) => r.panel == Panel.granths && r.religionId == null;
+
   bool _fabShown(GRoute r) => r.panel != Panel.ai && RemoteConfig.I.aiEnabled && !_deckOpen;
 
   Widget _panel(GRoute r) => switch (r.panel) {
@@ -297,9 +302,9 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
                           physics: const BoundedScrollPhysics(),
                           slivers: [
                             SliverToBoxAdapter(
-                              child: _Mast(deckOpen: _deckOpen, onDeck: () => _openDeck(0), link: _deckLink),
+                              child: _Mast(deckOpen: _deckOpen, onDeck: () => _openDeck(0), link: _deckLink, compact: _slimMast(r)),
                             ),
-                            SliverToBoxAdapter(child: _Hamburger(open: nav.menuOpen)),
+                            if (!_slimMast(r)) SliverToBoxAdapter(child: _Hamburger(open: nav.menuOpen)),
                             SliverToBoxAdapter(child: _NavMenu(open: nav.menuOpen)),
                             SliverPadding(
                               padding: EdgeInsets.fromLTRB(16, 16, 16, 72 + tabsH),
@@ -492,8 +497,11 @@ class _RootBackground extends StatelessWidget {
 
 /// `.mast`
 class _Mast extends StatelessWidget {
-  const _Mast({required this.deckOpen, required this.onDeck, required this.link});
+  const _Mast({required this.deckOpen, required this.onDeck, required this.link, this.compact = false});
   final bool deckOpen;
+
+  /// One slim row: the menu button moves into it and the stats boxes are left out.
+  final bool compact;
   final VoidCallback onDeck;
   final LayerLink link;
 
@@ -516,26 +524,34 @@ class _Mast extends StatelessWidget {
             decoration: const BoxDecoration(gradient: LinearGradient(colors: [GColors.saffronDark, GColors.saffron, GColors.gold, GColors.saffron, GColors.saffronDark])),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
+            padding: compact ? const EdgeInsets.fromLTRB(12, 8, 12, 8) : const EdgeInsets.fromLTRB(20, 16, 20, 18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Row(
                   children: [
+                    if (compact) ...[
+                      Semantics(
+                        button: true,
+                        label: nav.menuOpen ? 'मेनू बंद करें' : 'मेनू खोलें',
+                        child: _MastBtn(key: const ValueKey('mast-menu'), icon: nav.menuOpen ? 'x' : 'menu', onTap: nav.toggleMenu, size: 38),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     Expanded(
                       child: Pressable(
                         onTap: () => nav.go('#/dashboard'),
                         behavior: HitTestBehavior.deferToChild,
                         child: Row(
                           children: [
-                            const Hero(tag: 'granth-logo', child: LogoIcon()),
-                            const SizedBox(width: 12),
+                            Hero(tag: 'granth-logo', child: compact ? const LogoIcon(size: 36) : const LogoIcon()),
+                            SizedBox(width: compact ? 8 : 12),
                             Flexible(
                               // One line always (narrow phones, large text): shrinks instead of wrapping.
                               child: FittedBox(
                                 fit: BoxFit.scaleDown,
                                 alignment: Alignment.centerLeft,
-                                child: Text('ग्रंथ प्रबंधन', maxLines: 1, style: GText.display(size: 26, color: GColors.goldLight, height: 1.15, letterSpacing: 0.5)),
+                                child: Text('ग्रंथ प्रबंधन', maxLines: 1, style: GText.display(size: compact ? 21 : 26, color: GColors.goldLight, height: 1.15, letterSpacing: 0.5)),
                               ),
                             ),
                           ],
@@ -597,22 +613,23 @@ class _Mast extends StatelessWidget {
                         );
                       },
                     ),
-                    _MastBtn(icon: 'images', onTap: () => nav.go('#/gallery')),
+                    _MastBtn(icon: 'images', onTap: () => nav.go('#/gallery'), size: compact ? 38 : 44),
                     const SizedBox(width: 6),
-                    _MastBtn(icon: 'settings', onTap: () => openSettings(context)),
+                    _MastBtn(icon: 'settings', onTap: () => openSettings(context), size: compact ? 38 : 44),
                     const SizedBox(width: 6),
                     // Round-4: account last, at the far right, next to settings.
-                    const _AvatarBtn(),
+                    _AvatarBtn(size: compact ? 38 : 44),
                   ],
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: compact ? 8 : 16),
+                // t408: every stat stays a button (same taps); on the Granth tab they are slimmer.
                 Row(
                   children: [
-                    _Stat(n: s.topics.length, label: 'विषय / प्रश्नोत्तरी', active: nav.isActive(Panel.topics), onTap: () => nav.go('#/topics')),
-                    const SizedBox(width: 10),
-                    _Stat(n: s.granths.length, label: 'पवित्र ग्रन्थ', active: nav.isActive(Panel.granths), onTap: () => nav.go('#/granths')),
-                    const SizedBox(width: 10),
-                    _Stat(n: s.pramans.length, label: 'नए प्रमाण', active: nav.isActive(Panel.pramans), onTap: () => nav.go('#/pramans')),
+                    _Stat(n: s.topics.length, label: 'विषय / प्रश्नोत्तरी', active: nav.isActive(Panel.topics), onTap: () => nav.go('#/topics'), slim: compact),
+                    SizedBox(width: compact ? 8 : 10),
+                    _Stat(n: s.granths.length, label: 'पवित्र ग्रन्थ', active: nav.isActive(Panel.granths), onTap: () => nav.go('#/granths'), slim: compact),
+                    SizedBox(width: compact ? 8 : 10),
+                    _Stat(n: s.pramans.length, label: 'नए प्रमाण', active: nav.isActive(Panel.pramans), onTap: () => nav.go('#/pramans'), slim: compact),
                   ],
                 ),
               ],
@@ -626,7 +643,8 @@ class _Mast extends StatelessWidget {
 
 /// Round account button next to settings: Google photo, else initial, else a person icon.
 class _AvatarBtn extends StatelessWidget {
-  const _AvatarBtn();
+  const _AvatarBtn({this.size = 44});
+  final double size;
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: FirebaseBridge.I,
@@ -640,14 +658,14 @@ class _AvatarBtn extends StatelessWidget {
           onTap: () => AppNav.I.openLink('#/account'),
           scale: 0.9,
           child: Container(
-            width: 44,
-            height: 44,
+            width: size,
+            height: size,
             padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(color: GColors.gold.withValues(alpha: 0.7), width: 1.5),
             ),
-            child: AccountAvatar(url: a?.photo ?? '', name: a == null ? '' : (a.name.isEmpty ? a.email : a.name), size: 35),
+            child: AccountAvatar(url: a?.photo ?? '', name: a == null ? '' : (a.name.isEmpty ? a.email : a.name), size: size - 9),
           ),
         ),
       );
@@ -656,16 +674,17 @@ class _AvatarBtn extends StatelessWidget {
 }
 
 class _MastBtn extends StatelessWidget {
-  const _MastBtn({required this.icon, required this.onTap});
+  const _MastBtn({super.key, required this.icon, required this.onTap, this.size = 44});
   final String icon;
   final VoidCallback onTap;
+  final double size;
   @override
   Widget build(BuildContext context) => Pressable(
     onTap: onTap,
     scale: 0.9,
     child: Container(
-      width: 44,
-      height: 44,
+      width: size,
+      height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.08),
@@ -679,7 +698,8 @@ class _MastBtn extends StatelessWidget {
 
 /// `.stat-item` — glows when its panel is active.
 class _Stat extends StatelessWidget {
-  const _Stat({required this.n, required this.label, required this.active, required this.onTap});
+  const _Stat({required this.n, required this.label, required this.active, required this.onTap, this.slim = false});
+  final bool slim;
   final int n;
   final String label;
   final bool active;
@@ -703,28 +723,38 @@ class _Stat extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 280),
           curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          padding: EdgeInsets.symmetric(horizontal: 6, vertical: slim ? 4 : 8),
           decoration: BoxDecoration(
             // .stat-item: rgba(255,255,255,.06) / gold 35% border; active: gold 28% / gold-light border.
             color: active ? GColors.gold.withValues(alpha: 0.28) : Colors.white.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: active ? GColors.goldLight : GColors.gold.withValues(alpha: 0.35)),
           ),
-          child: Column(
-            children: [
-              CountUp(
-                value: n,
-                memo: 'mast:$label',
-                style: GText.display(size: 22, color: GColors.goldLight, height: 1.1),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: GText.sans(size: 12, color: GColors.paper, height: 1.25),
-              ),
-            ],
-          ),
+          child: slim
+              // slim (Granth tab): "106 पवित्र ग्रन्थ" on one line
+              ? FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    CountUp(value: n, memo: 'mast:$label', style: GText.display(size: 16, color: GColors.goldLight, height: 1.1)),
+                    const SizedBox(width: 5),
+                    Text(label, maxLines: 1, style: GText.sans(size: 11, color: GColors.paper, height: 1.2)),
+                  ]),
+                )
+              : Column(
+                  children: [
+                    CountUp(
+                      value: n,
+                      memo: 'mast:$label',
+                      style: GText.display(size: 22, color: GColors.goldLight, height: 1.1),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      style: GText.sans(size: 12, color: GColors.paper, height: 1.25),
+                    ),
+                  ],
+                ),
         ),
       ),
     ),

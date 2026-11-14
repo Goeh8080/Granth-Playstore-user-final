@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
@@ -165,16 +167,46 @@ bool _linkMissing(CatalogStore s, GRoute e, Topic? topic, Granth? granth) {
   return false;
 }
 
+/// t408: the pictures of a [PramanCard] drawn for a card PDF (already decoded, so the card is
+/// complete in one frame).
+class PramanCardPictures {
+  const PramanCardPictures({this.proof, this.granth, this.editor});
+  final ui.Image? proof;
+  final ui.Image? granth;
+  final ui.Image? editor;
+}
+
 /// `Uh`
 class PramanCard extends StatelessWidget {
-  const PramanCard({super.key, required this.praman, required this.index, required this.total});
+  const PramanCard({super.key, required this.praman, required this.index, required this.total, this.pictures});
   final Praman praman;
   final int index;
   final int total;
 
+  /// Card PDF (t408): the same card, its pictures given, without the on-screen action buttons
+  /// (↓ save, Share, PDF) and the video player, which mean nothing on paper.
+  final PramanCardPictures? pictures;
+
+  /// The still picture of a card PDF, framed exactly like [GranthImage] frames it on screen.
+  static Widget _still(ui.Image? image, {required bool thumb}) {
+    if (image == null) return const SizedBox.shrink();
+    final radius = thumb ? 6.0 : 8.0;
+    Widget img = RawImage(image: image, width: thumb ? 52 : double.infinity, height: thumb ? 52 : null, fit: thumb ? BoxFit.cover : BoxFit.fitWidth, filterQuality: FilterQuality.high);
+    if (!thumb) img = AspectRatio(aspectRatio: image.width / image.height, child: img);
+    return Padding(
+      padding: EdgeInsets.only(top: thumb ? 0 : 12),
+      child: Container(
+        decoration: BoxDecoration(color: thumb ? GColors.cream : GColors.creamDark, border: Border.all(color: GColors.creamDark), borderRadius: BorderRadius.circular(radius)),
+        clipBehavior: Clip.antiAlias,
+        child: img,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final e = praman;
+    final pdf = pictures;
     final vid = youtubeId(e.youtubeUrl);
     final paths = [e.imagePath, e.granthImage, e.editorImagePath].map(mediaPath).whereType<String>().toList();
     final hero = 'praman-${e.id}';
@@ -189,14 +221,16 @@ class PramanCard extends StatelessWidget {
             Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(children: [
-                  GranthImage(
+                  if (pdf != null) _still(pdf.granth, thumb: true)
+                  else GranthImage(
                     path: e.granthImage,
                     kind: ShotKind.thumb,
                     onTap: open,
                     save: SaveMeta(title: e.granthTitle, text: e.title, topic: e.topicTitle, granth: e.granthTitle),
                   ),
-                  if (mediaPath(e.granthImage) != null) const SizedBox(width: 8),
-                  GranthImage(path: e.editorImagePath, kind: ShotKind.thumb, onTap: open),
+                  if (mediaPath(e.granthImage) != null && (pdf == null || pdf.granth != null)) const SizedBox(width: 8),
+                  if (pdf != null) _still(pdf.editor, thumb: true)
+                  else GranthImage(path: e.editorImagePath, kind: ShotKind.thumb, onTap: open),
                   const Spacer(),
                   if (e.isFavorite) Text('मुख्य', style: GText.sans(size: 12, weight: FontWeight.w700, color: GColors.maroon)),
                 ]),
@@ -206,14 +240,17 @@ class PramanCard extends StatelessWidget {
               Padding(padding: const EdgeInsets.only(top: 8), child: Text(e.description, style: GText.sans(size: 14, color: GColors.muted, height: 1.55))),
           ]),
         ),
-        GranthImage(
-          path: e.imagePath,
-          kind: ShotKind.proof,
-          heroTag: hero,
-          onTap: open,
-          save: SaveMeta(title: e.title, text: e.description, topic: e.topicTitle, granth: e.granthTitle),
-        ),
-        if (vid != null) VideoBlock(videoId: vid, start: e.youtubeStart, desc: e.youtubeDesc, title: e.title),
+        if (pdf != null)
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 0), child: _still(pdf.proof, thumb: false))
+        else
+          GranthImage(
+            path: e.imagePath,
+            kind: ShotKind.proof,
+            heroTag: hero,
+            onTap: open,
+            save: SaveMeta(title: e.title, text: e.description, topic: e.topicTitle, granth: e.granthTitle),
+          ),
+        if (vid != null && pdf == null) VideoBlock(videoId: vid, start: e.youtubeStart, desc: e.youtubeDesc, title: e.title),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Container(
@@ -224,8 +261,8 @@ class PramanCard extends StatelessWidget {
               if (e.topicTitle.isNotEmpty) Pill(label: e.topicTitle, tone: PillTone.topic, onTap: () => AppNav.I.go('#/pramans?topic=${e.topicId}')),
               if (e.granthTitle.isNotEmpty) Pill(icon: 'library', label: e.granthTitle, onTap: () => AppNav.I.go('#/pramans?granth=${e.granthId}')),
               Pill(icon: 'library', label: '$index/$total'),
-              Pill(icon: 'share-2', label: 'Share', onTap: () => FileActions.shareText(e.title, shareLink('praman', e.id))),
-              Pill(label: 'PDF', tone: PillTone.maroon, onTap: () => askPdf(context, PramanPdfRequest(e))),
+              if (pdf == null) Pill(icon: 'share-2', label: 'Share', onTap: () => FileActions.shareText(e.title, shareLink('praman', e.id))),
+              if (pdf == null) Pill(label: 'PDF', tone: PillTone.maroon, onTap: () => askPdf(context, PramanPdfRequest(e))),
             ]),
           ),
         ),

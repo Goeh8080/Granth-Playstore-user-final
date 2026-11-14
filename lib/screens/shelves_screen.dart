@@ -103,10 +103,12 @@ String _count(int granths, int pramans) => pramans > 0 ? '$granths ग्रं�
 int folderCols() => UiPrefs.I.shelfCols;
 
 /// The size of a folder's picture for a column count: big and clear in 2×2.
+/// v2 (Goutam: "bade bade nahi"): compact like ref2/ref3 — the 1×1 row is a slim list row,
+/// 3×3 shows three small square-ish logo tiles per row.
 double folderPicSize(int cols) => switch (cols) {
-      1 => 74,
-      2 => 80,
-      _ => 60,
+      1 => 52,
+      2 => 64,
+      _ => 44,
     };
 
 /// One folder card: the normal card (so every card style / theme applies) with a picture,
@@ -146,87 +148,70 @@ class FolderRow extends StatelessWidget {
         padding: EdgeInsets.zero,
         onTap: onTap,
         child: Stack(children: [
-          const Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: FolderCardBackdrop(wide: true)))),
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+            padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
             child: Row(children: [
               pic,
-              const SizedBox(width: 16),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                  Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GText.script(size: 21, color: titleColor, height: 1.3).copyWith(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 2),
-                  Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: GText.sans(size: 14, weight: FontWeight.w600, color: subColor)),
+                  Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: GText.script(size: 17.5, color: titleColor, height: 1.25).copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 1),
+                  Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: GText.sans(size: 12.5, weight: FontWeight.w600, color: subColor)),
                 ]),
               ),
               const SizedBox(width: 8),
-              const ChevronCircle(),
+              const ChevronCircle(size: 28),
             ]),
           ),
         ]),
       );
     }
     final small = cols >= 3;
-    return GCard(
-      decorate: premiumFolderCard,
-      clip: true,
-      padding: EdgeInsets.zero,
-      onTap: onTap,
-      child: Stack(children: [
-        const Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: FolderCardBackdrop(wide: false)))),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: small ? 6 : 10, vertical: small ? 10 : 14),
-          child: SizedBox(
-            width: double.infinity,
-            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              pic,
-              SizedBox(height: small ? 8 : 10),
-              Text(title,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GText.script(size: small ? 14.5 : 18, color: titleColor, height: 1.3).copyWith(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 2),
-              // 3×3 is narrow: "37 ग्रंथ • 551 प्रमाण" becomes two short lines
-              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                if (!small) _dash(),
-                Flexible(
-                  child: Text(small ? subtitle.replaceAll(' • ', '\n') : subtitle,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: GText.sans(size: small ? 11 : 12.5, weight: FontWeight.w600, color: subColor, height: 1.3)),
+    // t408: the old grid arrangement, each tile a compact iOS-style squircle (continuous
+    // corners, 1:1) in the old flat card colours — no gloss, no gradient.
+    final look = cardDecoration(UiPrefs.I.look);
+    final shape = ContinuousRectangleBorder(
+      borderRadius: BorderRadius.circular(small ? 30 : 40),
+      side: BorderSide(color: (look.border as Border?)?.top.color ?? GColors.creamDark),
+    );
+    return AspectRatio(
+      aspectRatio: 1,
+      child: Pressable(
+        onTap: onTap,
+        scale: 0.985,
+        child: DecoratedBox(
+          decoration: ShapeDecoration(color: look.color ?? GColors.paper, shape: shape, shadows: [BoxShadow(color: GColors.shadow(0.08), blurRadius: 8, offset: const Offset(0, 2))]),
+          child: ClipPath(
+            clipper: ShapeBorderClipper(shape: shape),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: small ? 4 : 8, vertical: small ? 6 : 10),
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                pic,
+                SizedBox(height: small ? 4 : 7),
+                Text(title,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GText.script(size: small ? 12.5 : 15.5, color: titleColor, height: 1.2).copyWith(fontWeight: FontWeight.w700)),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(subtitle, maxLines: 1, style: GText.sans(size: small ? 10 : 11.5, weight: FontWeight.w600, color: subColor, height: 1.25)),
                 ),
-                if (!small) _dash(),
               ]),
-            ]),
+            ),
           ),
         ),
-      ]),
+      ),
     );
   }
 
-  static Widget _dash() => Container(
-        width: 12,
-        height: 1.2,
-        margin: const EdgeInsets.symmetric(horizontal: 5),
-        color: GColors.gold.withValues(alpha: 0.7),
-      );
 }
 
 /// t368: the default (सादा) card of the Granth tab folders — warm cream, soft gold rim, gold
 /// glow shadow. Every other card style keeps its own look.
-BoxDecoration? premiumFolderCard(String look) => look != 'classic'
-    ? null
-    : BoxDecoration(
-        gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFFFFEF9), Color(0xFFFBF1DC)]),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: GColors.goldLight.withValues(alpha: 0.9), width: 1.3),
-        boxShadow: [
-          BoxShadow(color: GColors.gold.withValues(alpha: 0.20), blurRadius: 16, offset: const Offset(0, 7)),
-          BoxShadow(color: GColors.shadow(0.05), blurRadius: 3, offset: const Offset(0, 1)),
-        ],
-      );
+/// t368's warm gradient card is retired (t408: old flat card colours, no gloss); kept as a hook.
+BoxDecoration? premiumFolderCard(String look) => null;
 
 /// The "›" in a small cream circle with a gold rim.
 class ChevronCircle extends StatelessWidget {

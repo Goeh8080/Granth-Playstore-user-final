@@ -18,60 +18,73 @@ class GranthsHero extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, c) {
       final w = c.maxWidth.isFinite ? c.maxWidth : 400.0;
-      final wide = w >= 560;
-      final logo = w < 340 ? 58.0 : 72.0;
-      final head = Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+      // v2 (ref1/ref3 placement): ONE header row — logo · serif "Granths" over the two-line
+      // italic subtitle · temple art behind · the maroon "Multiple granth PDF ›" pill on the
+      // right of the same row. Sizes scale with the width (360 → 411 dp phones, tablets).
+      final narrow = w < 380;
+      final logo = narrow ? 56.0 : (w < 560 ? 64.0 : 70.0);
+      final titleSize = narrow ? 29.0 : (w < 560 ? 32.0 : 36.0);
+      final parts = _subtitleLines(subtitle);
+      final sub = GText.script(size: narrow ? 11.5 : 12.5, color: GColors.brown, height: 1.2)
+          .copyWith(fontFamily: 'DMSerif', fontFamilyFallback: GFonts.scriptFallback, fontStyle: FontStyle.italic);
+      final head = Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.center, children: [
         SizedBox(width: logo, height: logo, child: const CustomPaint(painter: GranthsLogoPainter())),
-        const SizedBox(width: 10),
+        const SizedBox(width: 6),
         Flexible(
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.center, children: [
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(title,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.center, children: [
+              Text(title,
                   maxLines: 1,
-                  style: GText.script(size: w < 340 ? 36 : 40, color: GColors.maroon, height: 1.1).copyWith(
+                  style: GText.script(size: titleSize, color: GColors.maroon, height: 1.05).copyWith(
                     fontFamily: 'DMSerif',
                     fontFamilyFallback: GFonts.scriptFallback,
                     shadows: [Shadow(color: GColors.gold.withValues(alpha: 0.35), offset: const Offset(0, 1.5), blurRadius: 2)],
                   )),
-            ),
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              _rule(),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(subtitle,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    style: GText.script(size: 15, color: GColors.brown, height: 1.2).copyWith(fontFamily: 'DMSerif', fontFamilyFallback: GFonts.scriptFallback, fontStyle: FontStyle.italic)),
-              ),
-              const SizedBox(width: 6),
-              _rule(),
+              const SizedBox(height: 2),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                _rule(),
+                const SizedBox(width: 5),
+                Text(parts.$1, maxLines: 1, style: sub),
+                const SizedBox(width: 5),
+                _rule(),
+              ]),
+              if (parts.$2.isNotEmpty) Text(parts.$2, maxLines: 1, style: sub),
             ]),
-          ]),
+          ),
         ),
       ]);
-      final pill = KeyedSubtree(key: const ValueKey('header-trailing'), child: GranthsPdfPill(onTap: onPdf));
-      return Stack(clipBehavior: Clip.none, children: [
-        // temple silhouette, top right, behind everything
-        Positioned(
-          right: wide ? 210 : 4,
-          top: -6,
-          width: 130,
-          height: 96,
-          child: const IgnorePointer(child: CustomPaint(painter: TemplePainter())),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(2, 6, 2, 4),
-          child: wide
-              ? Row(children: [Expanded(child: Align(alignment: Alignment.centerLeft, child: head)), const SizedBox(width: 12), pill])
-              : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Align(alignment: Alignment.centerLeft, child: head),
-                  const SizedBox(height: 8),
-                  Align(alignment: Alignment.centerRight, child: pill),
-                ]),
-        ),
-      ]);
+      final pill = KeyedSubtree(key: const ValueKey('header-trailing'), child: GranthsPdfPill(onTap: onPdf, compact: narrow));
+      return SizedBox(
+        key: const ValueKey('granths-hero-row'),
+        height: logo + 14,
+        child: Stack(clipBehavior: Clip.none, children: [
+          // temple silhouette between the title and the pill, behind everything (ref3)
+          Positioned(
+            right: w * 0.24,
+            top: -16,
+            width: narrow ? 100 : 118,
+            height: logo + 26,
+            child: const IgnorePointer(child: CustomPaint(painter: TemplePainter())),
+          ),
+          Positioned.fill(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+              Expanded(child: Align(alignment: Alignment.centerLeft, child: head)),
+              const SizedBox(width: 6),
+              Flexible(child: Align(alignment: Alignment.centerRight, child: FittedBox(fit: BoxFit.scaleDown, child: pill))),
+            ]),
+          ),
+        ]),
+      );
     });
+  }
+
+  /// "Sacred texts and scriptures" → ("Sacred texts", "and scriptures") like the reference.
+  static (String, String) _subtitleLines(String s) {
+    final i = s.indexOf(' and ');
+    if (i > 0) return (s.substring(0, i), s.substring(i + 1));
+    return (s, '');
   }
 
   Widget _rule() => Container(
@@ -83,8 +96,11 @@ class GranthsHero extends StatelessWidget {
 
 /// The maroon "Multiple granth PDF ›" pill (gold rim, white PDF badge).
 class GranthsPdfPill extends StatelessWidget {
-  const GranthsPdfPill({super.key, required this.onTap});
+  const GranthsPdfPill({super.key, required this.onTap, this.compact = false});
   final VoidCallback onTap;
+
+  /// Narrow phones (360 dp): a slightly smaller pill so it shares the row with the title.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -94,25 +110,23 @@ class GranthsPdfPill extends StatelessWidget {
           onTap: onTap,
           child: Container(
             key: const ValueKey('multi-pdf-pill'),
-            padding: const EdgeInsets.fromLTRB(6, 6, 12, 6),
+            padding: EdgeInsets.fromLTRB(5, 5, compact ? 8 : 10, 5),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFA31C34), GColors.maroon, Color(0xFF5A0E1C)]),
+              color: GColors.maroon, // t408: flat old maroon, no gloss
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: GColors.goldLight, width: 1.4),
-              boxShadow: [BoxShadow(color: GColors.maroon.withValues(alpha: 0.32), blurRadius: 12, offset: const Offset(0, 5))],
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Container(
-                width: 28,
-                height: 28,
+                width: compact ? 22 : 25,
+                height: compact ? 22 : 25,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(color: GColors.paper, borderRadius: BorderRadius.circular(8)),
-                child: Text('PDF', style: GText.sans(size: 9, weight: FontWeight.w800, color: GColors.maroon, height: 1)),
+                child: Text('PDF', style: GText.sans(size: compact ? 7.5 : 8.5, weight: FontWeight.w800, color: GColors.maroon, height: 1)),
               ),
-              const SizedBox(width: 9),
-              Flexible(child: ExcludeSemantics(child: Text('Multiple granth PDF', maxLines: 1, overflow: TextOverflow.ellipsis, style: GText.sans(size: 13, weight: FontWeight.w700, color: GColors.paper, height: 1.2)))),
-              const SizedBox(width: 6),
-              const GIcon('chevron-right', size: 16, color: GColors.paper),
+              SizedBox(width: compact ? 6 : 7),
+              Flexible(child: ExcludeSemantics(child: Text('Multiple granth PDF', maxLines: 1, overflow: TextOverflow.ellipsis, style: GText.sans(size: compact ? 11 : 12, weight: FontWeight.w700, color: GColors.paper, height: 1.2)))),
+              const SizedBox(width: 3),
+              GIcon('chevron-right', size: compact ? 13 : 15, color: GColors.paper),
             ]),
           ),
         ),
@@ -202,7 +216,7 @@ class TemplePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     canvas.save();
     canvas.scale(size.width / 130, size.height / 96);
-    final p = Paint()..shader = LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [GColors.gold.withValues(alpha: 0.30), GColors.gold.withValues(alpha: 0.10)]).createShader(const Rect.fromLTWH(0, 0, 130, 96));
+    final p = Paint()..shader = LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [GColors.gold.withValues(alpha: 0.42), GColors.gold.withValues(alpha: 0.14)]).createShader(const Rect.fromLTWH(0, 0, 130, 96));
     Path spire(double cx, double base, double h, double w) => Path()
       ..moveTo(cx - w, base)
       ..quadraticBezierTo(cx - w * 0.9, base - h * 0.6, cx, base - h)

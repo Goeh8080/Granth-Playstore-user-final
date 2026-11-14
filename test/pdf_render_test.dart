@@ -14,6 +14,7 @@ Future<void> loadFonts() async {
     'YatraOne': ['YatraOne-Devanagari.ttf'],
     'YatraOneLatin': ['YatraOne-Latin.ttf'],
     'TiroDevanagari': ['TiroDevanagariSanskrit-Regular.ttf'],
+    'DMSerif': ['DMSerifDisplay-Regular.ttf', 'DMSerifDisplay-Italic.ttf'],
   };
   for (final e in fams.entries) {
     final l = FontLoader(e.key);

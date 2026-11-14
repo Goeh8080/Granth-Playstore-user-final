@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import '../ai/navigator/voice_navigator.dart' show NavTouchTarget;
 
@@ -6,6 +8,7 @@ import '../models/structure.dart';
 import '../services/catalog_store.dart';
 import '../services/storage.dart';
 import '../services/remote_config.dart';
+import '../services/order.dart' show numericCompare;
 import '../services/search.dart';
 import '../state/ui_prefs.dart';
 import '../state/motion.dart';
@@ -20,7 +23,10 @@ import '../widgets/live_panel.dart';
 import '../widgets/panel.dart';
 import '../widgets/pop.dart';
 import '../widgets/overlays.dart';
+import '../widgets/granth_view_setting.dart';
 import 'granths_screen.dart';
+
+export '../widgets/granth_view_setting.dart' show granthViewKey, granthViewMode, granthViewChanged, setGranthView;
 
 /// Round 10 — the folder levels of the Granth tab (omma-style structure, built natively):
 ///
@@ -98,9 +104,9 @@ int folderCols() => UiPrefs.I.shelfCols;
 
 /// The size of a folder's picture for a column count: big and clear in 2×2.
 double folderPicSize(int cols) => switch (cols) {
-      1 => 60,
-      2 => 84,
-      _ => 58,
+      1 => 74,
+      2 => 80,
+      _ => 60,
     };
 
 /// One folder card: the normal card (so every card style / theme applies) with a picture,
@@ -132,51 +138,160 @@ class FolderRow extends StatelessWidget {
   Widget _build(BuildContext context) {
     final pic = leading(folderPicSize(cols));
     final titleColor = dim ? GColors.muted : GColors.maroon;
-    final subColor = dim ? GColors.muted : GColors.saffronDark;
+    final subColor = dim ? GColors.muted : GColors.brown;
     if (cols == 1) {
       return GCard(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decorate: premiumFolderCard,
+        clip: true,
+        padding: EdgeInsets.zero,
         onTap: onTap,
-        child: Row(children: [
-          pic,
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GText.script(size: 19, color: titleColor)),
-              const SizedBox(height: 3),
-              Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: GText.sans(size: 13, weight: FontWeight.w600, color: subColor)),
+        child: Stack(children: [
+          const Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: FolderCardBackdrop(wide: true)))),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+            child: Row(children: [
+              pic,
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                  Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GText.script(size: 21, color: titleColor, height: 1.3).copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: GText.sans(size: 14, weight: FontWeight.w600, color: subColor)),
+                ]),
+              ),
+              const SizedBox(width: 8),
+              const ChevronCircle(),
             ]),
           ),
-          const SizedBox(width: 8),
-          const GIcon('chevron-right', size: 20, color: GColors.muted),
         ]),
       );
     }
     final small = cols >= 3;
     return GCard(
-      padding: EdgeInsets.symmetric(horizontal: small ? 6 : 10, vertical: small ? 10 : 14),
+      decorate: premiumFolderCard,
+      clip: true,
+      padding: EdgeInsets.zero,
       onTap: onTap,
-      child: SizedBox(
-        width: double.infinity,
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          pic,
-          SizedBox(height: small ? 8 : 10),
-          Text(title,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: GText.script(size: small ? 14.5 : 18, color: titleColor, height: 1.3)),
-          const SizedBox(height: 2),
-          // 3×3 is narrow: "37 ग्रंथ • 551 प्रमाण" becomes two short lines
-          Text(small ? subtitle.replaceAll(' • ', '\n') : subtitle,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: GText.sans(size: small ? 11 : 12.5, weight: FontWeight.w600, color: subColor, height: 1.3)),
-        ]),
-      ),
+      child: Stack(children: [
+        const Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: FolderCardBackdrop(wide: false)))),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: small ? 6 : 10, vertical: small ? 10 : 14),
+          child: SizedBox(
+            width: double.infinity,
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              pic,
+              SizedBox(height: small ? 8 : 10),
+              Text(title,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: GText.script(size: small ? 14.5 : 18, color: titleColor, height: 1.3).copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 2),
+              // 3×3 is narrow: "37 ग्रंथ • 551 प्रमाण" becomes two short lines
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                if (!small) _dash(),
+                Flexible(
+                  child: Text(small ? subtitle.replaceAll(' • ', '\n') : subtitle,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GText.sans(size: small ? 11 : 12.5, weight: FontWeight.w600, color: subColor, height: 1.3)),
+                ),
+                if (!small) _dash(),
+              ]),
+            ]),
+          ),
+        ),
+      ]),
     );
   }
+
+  static Widget _dash() => Container(
+        width: 12,
+        height: 1.2,
+        margin: const EdgeInsets.symmetric(horizontal: 5),
+        color: GColors.gold.withValues(alpha: 0.7),
+      );
+}
+
+/// t368: the default (सादा) card of the Granth tab folders — warm cream, soft gold rim, gold
+/// glow shadow. Every other card style keeps its own look.
+BoxDecoration? premiumFolderCard(String look) => look != 'classic'
+    ? null
+    : BoxDecoration(
+        gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFFFFEF9), Color(0xFFFBF1DC)]),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: GColors.goldLight.withValues(alpha: 0.9), width: 1.3),
+        boxShadow: [
+          BoxShadow(color: GColors.gold.withValues(alpha: 0.20), blurRadius: 16, offset: const Offset(0, 7)),
+          BoxShadow(color: GColors.shadow(0.05), blurRadius: 3, offset: const Offset(0, 1)),
+        ],
+      );
+
+/// The "›" in a small cream circle with a gold rim.
+class ChevronCircle extends StatelessWidget {
+  const ChevronCircle({super.key, this.size = 34});
+  final double size;
+  @override
+  Widget build(BuildContext context) => Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: GColors.paper,
+          border: Border.all(color: GColors.goldLight, width: 1.3),
+          boxShadow: [BoxShadow(color: GColors.gold.withValues(alpha: 0.18), blurRadius: 6, offset: const Offset(0, 2))],
+        ),
+        child: GIcon('chevron-right', size: size * 0.55, color: GColors.maroon),
+      );
+}
+
+/// A faint lotus watermark (and in 1×1 a maroon swoosh in the bottom-right corner).
+class FolderCardBackdrop extends CustomPainter {
+  const FolderCardBackdrop({required this.wide});
+  final bool wide;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final petal = Paint()..color = GColors.gold.withValues(alpha: 0.10);
+    final c = wide ? Offset(w - 70, h * 0.55) : Offset(w / 2, h * 0.36);
+    final r = wide ? h * 0.42 : math.min(w, h) * 0.32;
+    for (var i = -2; i <= 2; i++) {
+      canvas.save();
+      canvas.translate(c.dx, c.dy + r * 0.5);
+      canvas.rotate(i * 0.42);
+      canvas.drawPath(
+        Path()
+          ..moveTo(0, 0)
+          ..quadraticBezierTo(-r * 0.32, -r * 0.55, 0, -r)
+          ..quadraticBezierTo(r * 0.32, -r * 0.55, 0, 0)
+          ..close(),
+        petal,
+      );
+      canvas.restore();
+    }
+    if (!wide) return;
+    final sw = Path()
+      ..moveTo(w, h * 0.45)
+      ..quadraticBezierTo(w * 0.93, h * 0.92, w * 0.70, h)
+      ..lineTo(w, h)
+      ..close();
+    canvas.drawPath(sw, Paint()..shader = const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFA31C34), Color(0xFF6E0F20)]).createShader(Rect.fromLTWH(w * 0.7, h * 0.45, w * 0.3, h * 0.55)));
+    canvas.drawPath(
+      Path()
+        ..moveTo(w, h * 0.40)
+        ..quadraticBezierTo(w * 0.92, h * 0.90, w * 0.66, h),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.3
+        ..color = GColors.gold.withValues(alpha: 0.7),
+    );
+  }
+
+  @override
+  bool shouldRepaint(FolderCardBackdrop old) => old.wide != wide;
 }
 
 /// The [FolderRow]s as the app's grid (1/2/3 columns, [gridSliver]) with the staggered entry
@@ -346,19 +461,9 @@ class _FolderScreenState extends State<_FolderScreen> with LivePanel {
 }
 
 
-const granthViewKey = Store.kGranthView;
-
-/// Real bundled previews (2× captures, 780 px wide): the COMPLETE folder screen and the 3×3 list.
-const double _kFoldersAspect = 780 / 1880;
-const double _kListAspect = 780 / 1146;
-
-/// Effective root Granth view: admin `ui.granth_view_mode` (folders/list) wins, else the
-/// user's saved once-only choice, else folders. Old saved values are read unchanged.
-String granthViewMode() => RemoteConfig.I.uiGranthViewMode ?? (Store.I.getString(granthViewKey) == 'list' ? 'list' : 'folders');
-
 /// Only the root Granth section asks this, never dashboard or a deep link.
-/// Choice is once-only and final: there is no user-facing "दृश्य बदलें" control.
-/// When the admin forces a view, the chooser is skipped entirely.
+/// t368: asked once ever (kept after logout); changed later in Settings → ग्रंथ दृश्य or with
+/// the search bar's filter button. When the admin forces a view, the chooser is skipped entirely.
 class _RootGranths extends StatefulWidget {
   const _RootGranths();
   @override
@@ -373,6 +478,7 @@ class _RootGranthsState extends State<_RootGranths> {
   void initState() {
     super.initState();
     RemoteConfig.I.addListener(_cfg);
+    granthViewChanged.addListener(_changed);
     // A slow phone may open the saved settings a moment late: decide only once they are
     // there, so a choice made earlier is never asked again.
     if (Store.I.persistent) {
@@ -403,8 +509,13 @@ class _RootGranthsState extends State<_RootGranths> {
     setState(() {});
   }
 
+  void _changed() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    granthViewChanged.removeListener(_changed);
     RemoteConfig.I.removeListener(_cfg);
     Store.I.adopted.removeListener(_prefsReady);
     super.dispose();
@@ -416,7 +527,7 @@ class _RootGranthsState extends State<_RootGranths> {
     final mode = await showPop<String>(context, (_) => const PopScope(canPop: false, child: GranthViewChoice()), dismissible: false, barrierOpacity: 0.55);
     _asking = false;
     if (mode == null || !mounted) return;
-    await Store.I.setString(granthViewKey, mode);
+    await setGranthView(mode);
     if (mounted) setState(() {});
   }
 
@@ -430,9 +541,10 @@ class _RootGranthsState extends State<_RootGranths> {
       ]);
 }
 
-/// Genuine deterministic GranthApp screenshots with a light looping scroll preview.
-/// See assets/previews/PROVENANCE.md. Shown once on first root Granth entry.
-/// All text follows the app theme (Theme text styles + colour scheme), no fixed colours.
+/// t368 — "आप ग्रंथ कैसे देखना चाहेंगे": asked once ever, cannot be dismissed without a
+/// choice. Each option is a LIVE miniature of the real screen (not a video or picture) that
+/// keeps scrolling: the religion folders in 1×1 and the single list in 3×3, in the app theme
+/// with real names and counts. All text follows the app theme (Theme text styles).
 class GranthViewChoice extends StatelessWidget {
   const GranthViewChoice({super.key});
 
@@ -440,7 +552,6 @@ class GranthViewChoice extends StatelessWidget {
     final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
     final h = MediaQuery.sizeOf(context).height;
     if (large) return (h * .12).clamp(48.0, 80.0);
-    // Tall enough at 320dp to read both full-width previews; still fits without dialog scroll.
     return (h * .34 / (scale > 1.3 ? scale / 1.3 : 1)).clamp(96.0, 260.0);
   }
 
@@ -453,16 +564,15 @@ class GranthViewChoice extends StatelessWidget {
       key: ValueKey('granth-view-$mode'),
       onTap: () => Navigator.pop(context, mode),
       child: GCard(
+        decorate: premiumFolderCard,
         padding: EdgeInsets.all(large ? 6 : 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            _PreviewStrip(
+            GranthViewLivePreview(
               key: ValueKey('granth-view-preview-$mode'),
-              asset: folders ? 'assets/previews/granth-folders-example.png' : 'assets/previews/granth-list-example.png',
-              aspect: folders ? _kFoldersAspect : _kListAspect,
-              semanticLabel: folders ? 'उदाहरण: असली ऐप का पूरा फ़ोल्डर दृश्य' : 'उदाहरण: सभी ग्रंथ का असली 3×3 ग्रिड',
+              mode: mode,
               height: imageHeight,
               duration: folders ? const Duration(seconds: 9) : const Duration(seconds: 7),
             ),
@@ -494,40 +604,36 @@ class GranthViewChoice extends StatelessWidget {
     final tt = theme.textTheme;
     final cs = theme.colorScheme;
     return SheetCard(key: const ValueKey('granth-view-picker'), scroll: false, opaque: true, children: [
-      Row(children: [
-        Expanded(
-          child: Text(
-            large ? 'ग्रंथ का दृश्य' : 'आप ग्रंथ कैसे देखना चाहेंगे',
-            key: const ValueKey('granth-view-heading'),
-            softWrap: true,
-            maxLines: large ? 1 : 2,
-            overflow: TextOverflow.ellipsis,
-            style: (large ? tt.titleMedium : tt.titleLarge)?.copyWith(
-              fontFamily: GFonts.display,
-              fontFamilyFallback: GFonts.displayFallback,
-              fontWeight: FontWeight.w400,
-              color: cs.primary,
-              height: 1.25,
-            ),
-          ),
+      // No close button: a choice is required (asked only once ever).
+      Text(
+        large ? 'ग्रंथ का दृश्य' : 'आप ग्रंथ कैसे देखना चाहेंगे',
+        key: const ValueKey('granth-view-heading'),
+        softWrap: true,
+        textAlign: TextAlign.center,
+        maxLines: large ? 1 : 2,
+        overflow: TextOverflow.ellipsis,
+        style: (large ? tt.titleMedium : tt.titleLarge)?.copyWith(
+          fontFamily: GFonts.display,
+          fontFamilyFallback: GFonts.displayFallback,
+          fontWeight: FontWeight.w400,
+          color: cs.primary,
+          height: 1.25,
         ),
-        IconButton(tooltip: 'पीछे', onPressed: () => Navigator.pop(context), icon: GIcon('x', size: 18, color: tt.bodyMedium?.color ?? cs.onSurface)),
-      ]),
+      ),
       SizedBox(height: large ? 6 : 12),
       LayoutBuilder(builder: (context, box) {
-        // Never taller than the full 3×3 list example at this width (no empty band under it);
-        // the taller complete folder screen scrolls inside the same height.
+        // A phone-shaped window (≤ 1.45 × its width), so both options fit without scrolling.
         final optW = (box.maxWidth - 8) / 2 - (large ? 12 : 16) - 2;
-        final h = optW > 0 ? imageHeight.clamp(0.0, optW / _kListAspect) : imageHeight;
+        final h = optW > 0 ? imageHeight.clamp(0.0, optW * 1.45) : imageHeight;
         return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(child: _option(context, 'folders', 'फ़ोल्डर', 'श्रेणियों में', large, h)),
+          Expanded(child: _option(context, 'folders', 'फ़ोल्डर', 'श्रेणियों में · 1×1', large, h)),
           const SizedBox(width: 8),
-          Expanded(child: _option(context, 'list', 'सभी ग्रंथ', 'एक सूची में', large, h)),
+          Expanded(child: _option(context, 'list', 'सभी ग्रंथ', 'एक सूची में · 3×3', large, h)),
         ]);
       }),
       SizedBox(height: large ? 4 : 10),
       Text(
-        large ? 'एक बार · अंतिम' : 'एक बार चुनें · बाद में नहीं बदलेगा',
+        large ? 'एक बार · सेटिंग्स में बदलें' : 'एक बार चुनें · बाद में सेटिंग्स में बदल सकते हैं',
         key: const ValueKey('granth-view-note'),
         textAlign: TextAlign.center,
         maxLines: 2,
@@ -538,41 +644,26 @@ class GranthViewChoice extends StatelessWidget {
   }
 }
 
-/// Lightweight looping scroll over a real full-width screenshot (no video dependency).
-/// The whole width is always visible (every folder column / all 3 list columns); the
-/// strip scrolls top → bottom → top with a short pause at each end so the COMPLETE
-/// screen is shown every loop. Stops on dispose; respects reduce-motion / एनिमेशन कम.
-class _PreviewStrip extends StatefulWidget {
-  const _PreviewStrip({
-    super.key,
-    required this.asset,
-    required this.aspect,
-    required this.semanticLabel,
-    required this.height,
-    required this.duration,
-  });
-  final String asset;
-  final double aspect;
-  final String semanticLabel;
+/// A live, looping, auto-scrolling miniature of the root Granth screen in [mode]: built from
+/// the real widgets ([FolderRow] + [ReligionSymbol] tiles, granth tiles) at a 320 dp virtual
+/// width and scaled into the option. Scrolls top → bottom → top with a pause at each end;
+/// still (top) when animations are off / reduced motion. Not interactive.
+class GranthViewLivePreview extends StatefulWidget {
+  const GranthViewLivePreview({super.key, required this.mode, required this.height, this.duration = const Duration(seconds: 8)});
+  final String mode;
   final double height;
   final Duration duration;
 
+  static const double virtualWidth = 320;
+
   @override
-  State<_PreviewStrip> createState() => _PreviewStripState();
+  State<GranthViewLivePreview> createState() => _GranthViewLivePreviewState();
 }
 
-class _PreviewStripState extends State<_PreviewStrip> with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
+class _GranthViewLivePreviewState extends State<GranthViewLivePreview> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: widget.duration);
   bool _motion = true;
-
-  /// Pause ~18% at top and bottom, ease in between.
   static const _curve = Interval(0.18, 0.82, curve: Curves.easeInOutCubic);
-
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(vsync: this, duration: widget.duration);
-  }
 
   @override
   void didChangeDependencies() {
@@ -594,39 +685,121 @@ class _PreviewStripState extends State<_PreviewStrip> with SingleTickerProviderS
     super.dispose();
   }
 
+  /// (content, estimated virtual height — the scroll range; the content sizes itself)
+  (Widget, double) _content() {
+    final all = CatalogStore.I.granths;
+    if (widget.mode == 'folders') {
+      const rowH = 98.0, gap = 10.0;
+      final index = Shelves.indexFor(all);
+      final rows = <Widget>[];
+      for (final r in index.structure.religions) {
+        if (!r.visible) continue;
+        final list = index.inReligion(r.id);
+        rows.add(FolderRow(
+          cols: 1,
+          leading: (size) => ReligionSymbol(r.icon, tone: _tone(r.tone), size: size),
+          title: r.title,
+          subtitle: list.isEmpty ? (r.comingSoon.isNotEmpty ? r.comingSoon : 'जल्द आ रहा है') : _count(list.length, ShelfIndex.pramans(list)),
+          dim: list.isEmpty,
+          onTap: () {},
+        ));
+      }
+      final h = rows.length * (rowH + gap) + 8;
+      return (
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [for (final r in rows) Padding(padding: const EdgeInsets.only(bottom: gap), child: r)]),
+        ),
+        h,
+      );
+    }
+    final list = [...all]..sort((a, b) => numericCompare(a.position, b.position));
+    final items = list.take(24).toList();
+    const tileH = 118.0, gap = 8.0;
+    final n = (items.length / 3).ceil();
+    return (
+      Padding(
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          for (var r = 0; r < n; r++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: gap),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                for (var c = 0; c < 3; c++) ...[
+                  if (c > 0) const SizedBox(width: gap),
+                  Expanded(child: r * 3 + c < items.length ? _MiniGranthTile(granth: items[r * 3 + c]) : const SizedBox()),
+                ],
+              ]),
+            ),
+        ]),
+      ),
+      n * (tileH + gap) + 8,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: widget.height,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: LayoutBuilder(builder: (context, box) {
-          final w = box.maxWidth;
-          final stripH = w / widget.aspect;
-          final maxY = (stripH - widget.height).clamp(0.0, double.infinity);
-          final dpr = MediaQuery.devicePixelRatioOf(context);
-          final image = Image.asset(
-            widget.asset,
-            semanticLabel: widget.semanticLabel,
-            width: w,
-            height: stripH,
-            fit: BoxFit.fill,
-            // Decode once at the on-screen size (sharp, light on memory).
-            cacheWidth: (w * dpr).ceil().clamp(64, 780),
-            filterQuality: FilterQuality.high,
-          );
-          return AnimatedBuilder(
-            animation: _c,
-            child: image,
-            builder: (context, child) {
-              final t = _motion ? _curve.transform(_c.value) : 0.0;
-              return Stack(clipBehavior: Clip.hardEdge, children: [
-                Positioned(top: -maxY * t, left: 0, width: w, height: stripH, child: child!),
-              ]);
-            },
-          );
-        }),
+    final (content, contentH) = _content();
+    return Semantics(
+      label: widget.mode == 'folders' ? 'उदाहरण: फ़ोल्डर दृश्य (1×1), अपने आप स्क्रॉल होता हुआ' : 'उदाहरण: सभी ग्रंथ एक सूची में (3×3), अपने आप स्क्रॉल होता हुआ',
+      child: ExcludeSemantics(
+        child: IgnorePointer(
+          child: SizedBox(
+            height: widget.height,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: ColoredBox(
+                color: GColors.cream,
+                child: LayoutBuilder(builder: (context, box) {
+                  final k = box.maxWidth / GranthViewLivePreview.virtualWidth;
+                  final maxY = (contentH - widget.height / k).clamp(0.0, double.infinity);
+                  final page = OverflowBox(
+                    alignment: Alignment.topLeft,
+                    minWidth: GranthViewLivePreview.virtualWidth,
+                    maxWidth: GranthViewLivePreview.virtualWidth,
+                    minHeight: 0,
+                    maxHeight: double.infinity,
+                    child: MediaQuery(data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling), child: content),
+                  );
+                  return AnimatedBuilder(
+                    animation: _c,
+                    child: RepaintBoundary(child: page),
+                    builder: (context, child) {
+                      final t = _motion ? _curve.transform(_c.value) : 0.0;
+                      return Transform(
+                        key: const ValueKey('granth-view-preview-page'),
+                        alignment: Alignment.topLeft,
+                        transform: Matrix4.diagonal3Values(k, k, 1)..translateByDouble(0, -maxY * t, 0, 1),
+                        child: child,
+                      );
+                    },
+                  );
+                }),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
+}
+
+/// One granth in the 3×3 list miniature: a glossy book tile, the name and its praman count.
+class _MiniGranthTile extends StatelessWidget {
+  const _MiniGranthTile({required this.granth});
+  final Granth granth;
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+        decoration: premiumFolderCard('classic')!,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(6, 8, 6, 6),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const GroupIcon('book-blue', size: 50),
+            const SizedBox(height: 6),
+            Text(granth.title, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: GText.script(size: 12.5, color: GColors.maroon, height: 1.25).copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text('${granth.pramanCount} प्रमाण', maxLines: 1, style: GText.sans(size: 10.5, weight: FontWeight.w600, color: GColors.brown)),
+          ]),
+        ),
+      );
 }

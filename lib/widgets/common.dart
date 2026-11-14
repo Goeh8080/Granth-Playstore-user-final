@@ -459,8 +459,11 @@ class LookBuilder extends StatelessWidget {
 
 /// `.card` container.
 class GCard extends StatelessWidget {
-  const GCard({super.key, required this.child, this.padding = const EdgeInsets.all(16), this.onTap, this.clip = false});
+  const GCard({super.key, required this.child, this.padding = const EdgeInsets.all(16), this.onTap, this.clip = false, this.decorate});
   final Widget child;
+
+  /// Optional per-look decoration (null result = the look's own card).
+  final BoxDecoration? Function(String look)? decorate;
   final EdgeInsets padding;
   final VoidCallback? onTap;
   final bool clip;
@@ -470,7 +473,7 @@ class GCard extends StatelessWidget {
     return ListenableBuilder(
       listenable: UiPrefs.I,
       builder: (context, _) {
-        final deco = cardDecoration(UiPrefs.I.look);
+        final deco = decorate?.call(UiPrefs.I.look) ?? cardDecoration(UiPrefs.I.look);
         final radius = deco.borderRadius?.resolve(TextDirection.ltr) ?? BorderRadius.zero;
         Widget c = DecoratedBox(
           decoration: deco,
@@ -665,16 +668,81 @@ class LogoIcon extends StatelessWidget {
 
 /// Animated `.grid-switch` — the maroon pill slides between "1×1 / 2×2 / 3×3".
 class GridSwitch extends StatelessWidget {
-  const GridSwitch({super.key, required this.options, required this.value, required this.onChanged, this.locked = false});
+  const GridSwitch({super.key, required this.options, required this.value, required this.onChanged, this.locked = false, this.wide = false});
   final List<int> options;
+
+  /// t368: the full-width cream pill with a glossy maroon thumb and gold rim (Granth tab).
+  final bool wide;
 
   /// The admin forces this grid: shown, not changeable.
   final bool locked;
   final int value;
   final ValueChanged<int> onChanged;
 
+  Widget _wide(BuildContext context) {
+    const h = 44.0;
+    final idx = math.max(0, options.indexOf(value));
+    final box = LayoutBuilder(builder: (context, c) {
+      final w = ((c.maxWidth.isFinite ? c.maxWidth : 300.0) - 8 - 2.4) / options.length; // padding + gold rim
+      return Container(
+        height: h + 8,
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFFFFDF7), Color(0xFFF8EEDA)]),
+          border: Border.all(color: GColors.goldLight, width: 1.2),
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: [BoxShadow(color: GColors.gold.withValues(alpha: 0.18), blurRadius: 10, offset: const Offset(0, 4))],
+        ),
+        child: Stack(children: [
+          for (var i = 1; i < options.length; i++)
+            Positioned(left: i * w - 0.5, top: 10, bottom: 10, child: Container(width: 1, color: GColors.gold.withValues(alpha: 0.35))),
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            left: idx * w,
+            top: 0,
+            width: w,
+            height: h,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFB02239), GColors.maroon, Color(0xFF5E0E1D)]),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: GColors.goldLight, width: 1.4),
+                boxShadow: [BoxShadow(color: GColors.maroon.withValues(alpha: 0.30), blurRadius: 8, offset: const Offset(0, 3))],
+              ),
+            ),
+          ),
+          Row(children: [
+            for (var i = 0; i < options.length; i++)
+              Semantics(
+                button: true,
+                selected: options[i] == value,
+                child: TapTarget(
+                  key: ValueKey('grid-${options[i]}'),
+                  onTap: locked ? null : () => onChanged(options[i]),
+                  child: SizedBox(
+                    width: w,
+                    height: h,
+                    child: Center(
+                      child: AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 200),
+                        style: GText.sans(size: 16, weight: FontWeight.w700, color: options[i] == value ? GColors.paper : GColors.brown),
+                        child: Text('${options[i]}×${options[i]}'),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ]),
+        ]),
+      );
+    });
+    return locked ? Tooltip(message: 'एडमिन द्वारा नियंत्रित', child: Opacity(key: const ValueKey('grid-locked'), opacity: 0.6, child: box)) : box;
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (wide) return _wide(context);
     const w = 44.0;
     const h = 36.0;
     final idx = math.max(0, options.indexOf(value));
@@ -731,8 +799,14 @@ class GridSwitch extends StatelessWidget {
 
 /// `.form-control` search input with the saffron focus ring.
 class SearchField extends StatefulWidget {
-  const SearchField({super.key, required this.placeholder, required this.onChanged, this.initial = '', this.debounce = const Duration(milliseconds: 200)});
+  const SearchField({super.key, required this.placeholder, required this.onChanged, this.initial = '', this.debounce = const Duration(milliseconds: 200), this.rounded = false, this.onFilter});
   final String placeholder;
+
+  /// t368: the rounded cream search bar with a search icon (Granth tab).
+  final bool rounded;
+
+  /// Shows the filter (sliders) button at the end of the bar.
+  final VoidCallback? onFilter;
 
   /// Called [debounce] after the last keystroke (immediately when cleared or on "search"),
   /// so typing stays smooth while the list filters.
@@ -789,11 +863,15 @@ class _SearchFieldState extends State<SearchField> {
   @override
   Widget build(BuildContext context) {
     final focus = _f.hasFocus;
+    final rounded = widget.rounded;
     final base = BoxDecoration(
       color: GColors.paper,
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: focus ? GColors.saffron : GColors.creamDark, width: 1.5),
-      boxShadow: focus ? [BoxShadow(color: GColors.saffron.withValues(alpha: 0.18), spreadRadius: 3)] : const [],
+      gradient: rounded ? const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFFFFEFA), Color(0xFFFBF3E2)]) : null,
+      borderRadius: BorderRadius.circular(rounded ? 999 : 10),
+      border: Border.all(color: focus ? GColors.saffron : (rounded ? GColors.goldLight : GColors.creamDark), width: rounded ? 1.2 : 1.5),
+      boxShadow: focus
+          ? [BoxShadow(color: GColors.saffron.withValues(alpha: 0.18), spreadRadius: 3)]
+          : (rounded ? [BoxShadow(color: GColors.gold.withValues(alpha: 0.16), blurRadius: 10, offset: const Offset(0, 4))] : const []),
     );
     // Card style reaches the search box too; the saffron focus ring always wins.
     return Column(
@@ -802,8 +880,8 @@ class _SearchFieldState extends State<SearchField> {
       children: [
         LookBuilder(builder: (context, _) => AnimatedContainer(
       duration: const Duration(milliseconds: 180),
-      decoration: focus ? base : themedSurface(base, maxRadius: 14),
-      child: TextField(
+      decoration: focus ? base : themedSurface(base, maxRadius: rounded ? 999 : 14),
+      child: _decorate(TextField(
         controller: _c,
         focusNode: _f,
         onChanged: _changed,
@@ -817,9 +895,9 @@ class _SearchFieldState extends State<SearchField> {
           border: InputBorder.none,
           hintText: widget.placeholder,
           hintStyle: GText.sans(size: 16, color: GColors.muted.withValues(alpha: 0.8)),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          contentPadding: EdgeInsets.symmetric(horizontal: rounded ? 4 : 14, vertical: rounded ? 13 : 11),
         ),
-      ),
+      )),
     )),
         // The last 5 searches, under the box while it is focused: tap = search again, × = forget
         // one, "मिटाएँ" = forget all. A tap region of the field, so tapping a chip does not first
@@ -868,6 +946,29 @@ class _SearchFieldState extends State<SearchField> {
             ),
           ),
       ]);
+  }
+}
+
+extension on _SearchFieldState {
+  /// The rounded bar: search icon · field · │ filter button.
+  Widget _decorate(Widget field) {
+    if (!widget.rounded && widget.onFilter == null) return field;
+    return Row(children: [
+      if (widget.rounded) const Padding(padding: EdgeInsets.only(left: 16, right: 8), child: GIcon('search', size: 20, color: GColors.brown)),
+      Expanded(child: field),
+      if (widget.onFilter != null) ...[
+        Container(width: 1, height: 24, color: GColors.gold.withValues(alpha: 0.4)),
+        Semantics(
+          button: true,
+          label: 'दृश्य और फ़िल्टर',
+          child: TapTarget(
+            key: const ValueKey('search-filter'),
+            onTap: widget.onFilter,
+            child: const Padding(padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12), child: GIcon('sliders', size: 20, color: GColors.brown)),
+          ),
+        ),
+      ],
+    ]);
   }
 }
 

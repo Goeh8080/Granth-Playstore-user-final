@@ -17,6 +17,8 @@ import '../state/router.dart';
 import '../state/ui_prefs.dart';
 import '../theme/colors.dart';
 import '../widgets/common.dart';
+import '../widgets/granth_view_setting.dart';
+import '../widgets/granths_hero.dart';
 import '../widgets/live_panel.dart';
 import '../widgets/granth_image.dart';
 import '../widgets/overlays.dart';
@@ -90,6 +92,40 @@ class _GranthsPanelState extends State<GranthsPanel> with LivePanel {
     final gridPage = idleOn ? 'shelves' : 'granths';
     final cols = idleOn ? UiPrefs.I.shelfCols : UiPrefs.I.granthCols;
     final dx = panelDx();
+    final hero = scope == null && widget.leading == null;
+    void multiPdf() => showPop<void>(context, (ctx) => _MultiGranthSheet(granths: rows.isEmpty ? pool : rows));
+    final search = SearchField(
+      placeholder: hero ? 'ग्रंथ का नाम — gita...' : 'ग्रंथ का नाम — gita, kabir',
+      initial: _q,
+      rounded: hero,
+      onFilter: hero ? () => showGranthViewSheet(context) : null,
+      onChanged: (v) { Places.setQuery(widget.placeKey, v); setState(() => _q = v); },
+    );
+    final grid = GridSwitch(locked: UiPrefs.I.gridLocked(gridPage), options: const [1, 2, 3], value: cols, wide: hero, onChanged: (v) => UiPrefs.I.setCols(Store.kGranthCols, v));
+    if (hero) {
+      // t368: the redesigned top of the Granth tab (ref1–3): logo, serif title, temple,
+      // maroon PDF pill; then the full-width 1×1/2×2/3×3 pill and the rounded search bar
+      // stay pinned while the folders/cards scroll.
+      return SliverMainAxisGroup(slivers: [
+        SliverToBoxAdapter(
+          child: Entry(
+            index: 0,
+            dx: dx,
+            child: GranthsHero(title: widget.title, subtitle: widget.subtitle, onPdf: multiPdf),
+          ),
+        ),
+        StickyHeader(
+          child: LayoutBuilder(builder: (context, c) {
+            final side = c.maxWidth >= 640;
+            return side
+                ? Row(children: [SizedBox(width: 300, child: grid), const SizedBox(width: 12), Expanded(child: search)])
+                : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [grid, const SizedBox(height: 10), search]);
+          }),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 14)),
+        ..._body(idleOn, dx, rows, cols, pool),
+      ]);
+    }
     return SliverMainAxisGroup(slivers: [
       StickyHeader(
         child: Entry(
@@ -103,47 +139,48 @@ class _GranthsPanelState extends State<GranthsPanel> with LivePanel {
             leading: widget.leading,
             trailingLow: true,
             trailing: Pressable(
-              onTap: () => showPop<void>(context, (ctx) => _MultiGranthSheet(granths: rows.isEmpty ? pool : rows)),
+              onTap: multiPdf,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(color: GColors.paper, border: Border.all(color: GColors.maroon), borderRadius: BorderRadius.circular(999)),
                 child: Text('Multiple granth PDF', style: GText.sans(size: 12, weight: FontWeight.w700, color: GColors.maroon, height: 1.2)),
               ),
             ),
-            tools: Tools(
-              grid: GridSwitch(locked: UiPrefs.I.gridLocked(gridPage), options: const [1, 2, 3], value: cols, onChanged: (v) => UiPrefs.I.setCols(Store.kGranthCols, v)),
-              search: SearchField(placeholder: 'ग्रंथ का नाम — gita, kabir', initial: _q, onChanged: (v) { Places.setQuery(widget.placeKey, v); setState(() => _q = v); }),
-            ),
+            tools: Tools(grid: grid, search: search),
           ),
         ),
       ),
       const SliverToBoxAdapter(child: SizedBox(height: 18)),
-      // Keyed by the column count: switching 1×1 / 2×2 / 3×3 re-lays out the grid and
-      // replays the staggered card entry, so the change is visible and animated.
-      if (idleOn) widget.idle!(context, dx, _ledger),
-      if (!idleOn) KeyedSubtree(key: ValueKey('grid-$cols'), child: gridSliver(
-        count: rows.length,
-        cols: cols,
-        gap: cols == 1 ? 14 : (cols == 2 ? 10 : 8),
-        item: (context, i) {
-          final id = '$cols:${rows[i].id}';
-          return Entry(
-            index: i + 1,
-            dx: dx,
-            ledger: _ledger,
-            id: id,
-            child: CardPop(ledger: _ledger, id: id, group: '$cols', index: i + 1, tailMs: GranthCard.innerMs, child: GranthCard(granth: rows[i], index: i + 1, total: rows.length, cols: cols)),
-          );
-        },
-      )),
-      if (rows.isEmpty && !idleOn)
-        SliverToBoxAdapter(
-          child: widget.emptyNote.isNotEmpty && _q.trim().isEmpty
-              ? EmptyState(title: 'जल्द आ रहा है', body: widget.emptyNote)
-              : const EmptyState(title: 'कोई ग्रंथ नहीं', body: 'सिंक के बाद पवित्र ग्रंथ यहाँ खुलेंगे।'),
-        ),
+      ..._body(idleOn, dx, rows, cols, pool),
     ]);
   }
+
+  List<Widget> _body(bool idleOn, double dx, List<Granth> rows, int cols, List<Granth> pool) => [
+        // Keyed by the column count: switching 1×1 / 2×2 / 3×3 re-lays out the grid and
+        // replays the staggered card entry, so the change is visible and animated.
+        if (idleOn) widget.idle!(context, dx, _ledger),
+        if (!idleOn) KeyedSubtree(key: ValueKey('grid-$cols'), child: gridSliver(
+          count: rows.length,
+          cols: cols,
+          gap: cols == 1 ? 14 : (cols == 2 ? 10 : 8),
+          item: (context, i) {
+            final id = '$cols:${rows[i].id}';
+            return Entry(
+              index: i + 1,
+              dx: dx,
+              ledger: _ledger,
+              id: id,
+              child: CardPop(ledger: _ledger, id: id, group: '$cols', index: i + 1, tailMs: GranthCard.innerMs, child: GranthCard(granth: rows[i], index: i + 1, total: rows.length, cols: cols)),
+            );
+          },
+        )),
+        if (rows.isEmpty && !idleOn)
+          SliverToBoxAdapter(
+            child: widget.emptyNote.isNotEmpty && _q.trim().isEmpty
+                ? EmptyState(title: 'जल्द आ रहा है', body: widget.emptyNote)
+                : const EmptyState(title: 'कोई ग्रंथ नहीं', body: 'सिंक के बाद पवित्र ग्रंथ यहाँ खुलेंगे।'),
+          ),
+      ];
 }
 
 /// `Vh` — granth card with the "book opening" effect when tapped.

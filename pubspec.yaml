@@ -41,7 +41,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/icons/
-    - assets/previews/
     - assets/structure/structure.json
     - assets/highlighter/
     - assets/highlighter/lib/
@@ -78,6 +77,12 @@ flutter:
     - family: TiroDevanagari
       fonts:
         - asset: assets/fonts/TiroDevanagariSanskrit-Regular.ttf
+    # t368: the serif "Granths" title + italic subtitle (DM Serif Display, SIL OFL 1.1: assets/fonts/DMSerifDisplay-OFL.txt)
+    - family: DMSerif
+      fonts:
+        - asset: assets/fonts/DMSerifDisplay-Regular.ttf
+        - asset: assets/fonts/DMSerifDisplay-Italic.ttf
+          style: italic
     - family: NotoDevaFull
       fonts:
         - asset: assets/fonts/NotoSansDevanagari-Full.ttf

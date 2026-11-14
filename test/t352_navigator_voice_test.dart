@@ -586,12 +586,12 @@ void main() {
       expect(sp.listens, 1);
       expect(sp.commands.single, isTrue, reason: 'command window');
       sp.onDone!('error_no_match');
-      await pumpEventQueue();
+      await _until(() => sp.listens == 2); // the spoken retry reads the phrase disk cache (real I/O)
       expect(sp.listens, 2);
       expect(VoiceNavigator.I.speaker.said, [NavPhrases.female.again]);
       expect(Toast.message.value, 'फिर से बोलिए');
       sp.onDone!('error_network');
-      await pumpEventQueue();
+      await _until(() => sp.listens == 3);
       expect(sp.listens, 3);
       sp.onDone!('error_no_match');
       await pumpEventQueue();
@@ -601,7 +601,7 @@ void main() {
     test('mic: noisy final with a low-confidence nonsense best guess retries; an alternate that matches navigates', () async {
       await VoiceNavigator.I.listenOnce();
       sp.onHeard!(const NavHeard(['ब ब'], confidence: 0.1));
-      await pumpEventQueue();
+      await _until(() => sp.listens == 2);
       expect(sp.listens, 2);
       sp.onHeard!(const NavHeard(['bed bol', 'ved khol'], confidence: 0.2));
       await pumpEventQueue(times: 50);
@@ -694,3 +694,11 @@ void main() {
 }
 
 class _RealHttp extends HttpOverrides {}
+
+/// Waits (real time, max 3 s) for [ok]: the Navigator's spoken replies touch the disk cache.
+Future<void> _until(bool Function() ok) async {
+  for (var i = 0; i < 300 && !ok(); i++) {
+    await pumpEventQueue();
+    if (!ok()) await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+}

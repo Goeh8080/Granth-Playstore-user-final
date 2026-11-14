@@ -164,6 +164,16 @@ jobs:
           done < <(find "$RUNNER_TEMP/aablib" -name '*.so' \( -path '*/arm64-v8a/*' -o -path '*/x86_64/*' \))
           [ "$n" -gt 0 ] || fail "no native libraries found in AAB"
           echo "all $n native libraries are 16KB page aligned"
+          # The AAB really is a valid bundle that unpacks into installable APKs (t370)
+          java -jar "$RUNNER_TEMP/bundletool.jar" validate --bundle "$AAB" > /dev/null || fail "bundletool validate failed"
+          java -jar "$RUNNER_TEMP/bundletool.jar" build-apks --bundle "$AAB" --output "$RUNNER_TEMP/check.apks" --mode universal --overwrite \
+            || fail "bundletool build-apks failed"
+          unzip -l "$RUNNER_TEMP/check.apks" | grep -q 'universal.apk' || fail "build-apks produced no universal.apk"
+          rm -f "$RUNNER_TEMP/check.apks"
+          echo "bundletool validate + build-apks OK"
+          # Direct (unzipped) copies: the browser download is the .aab / .apk itself, not a zip.
+          cp "$AAB" "dist/U.User-1.0.0.aab"
+          cp dist/granth-arm64-v8a.apk "dist/U.User-1.0.0-arm64.apk"
 
       - uses: actions/upload-artifact@v4
         if: env.DO_SIGN == 'true'
@@ -171,12 +181,31 @@ jobs:
           name: granth-flutter-apk-arm64
           path: dist/granth-arm64-v8a.apk
           if-no-files-found: error
+          compression-level: 0
 
       - uses: actions/upload-artifact@v4
         if: env.DO_SIGN == 'true'
         with:
           name: granth-flutter-aab
           path: dist/granth.aab
+          if-no-files-found: error
+          # an .aab is already a zip: store it, don't recompress it
+          compression-level: 0
+
+      # t370: the same files uploaded WITHOUT the artifact zip (upload-artifact v7 archive:false),
+      # so a browser download is a ready .aab / .apk (the zipped ones above stay for old scripts).
+      - uses: actions/upload-artifact@v7
+        if: env.DO_SIGN == 'true'
+        with:
+          path: dist/U.User-1.0.0.aab
+          archive: false
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v7
+        if: env.DO_SIGN == 'true'
+        with:
+          path: dist/U.User-1.0.0-arm64.apk
+          archive: false
           if-no-files-found: error
 
       - name: Remove signing material

@@ -3,9 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'common.dart';
+import 'icon_v3_style.dart';
 import 'religion_paths.dart';
 
 part 'religion_symbol_new.dart';
+part 'religion_symbol_v3.dart';
 
 /// Round 11 — the symbol of each dharm folder, drawn as vectors (no font glyph, no emoji,
 /// no asset): the same on every phone, crisp at any size, and tinted from the app palette
@@ -18,13 +20,18 @@ const List<String> religionSymbolNames = ['om', 'crescent', 'khanda', 'cross', '
 
 /// A rounded gradient tile with the symbol large inside it.
 class ReligionSymbol extends StatelessWidget {
-  const ReligionSymbol(this.name, {super.key, this.tone = Tone.maroon, this.size = 72});
+  const ReligionSymbol(this.name, {super.key, this.tone = Tone.maroon, this.size = 72, this.shimmer = false});
   final String name;
   final Tone tone;
   final double size;
 
+  /// v3: a light band sweeps over the tile now and then. Off by default (keep it off in
+  /// lists); never runs with reduced motion or [GranthIconStyle.shimmerEnabled] = false.
+  final bool shimmer;
+
   @override
   Widget build(BuildContext context) {
+    if (GranthIconStyle.premium) return _v3Build(context);
     final (colors, ink) = toneColors(tone);
     return Container(
       width: size,
@@ -43,12 +50,15 @@ class ReligionSymbol extends StatelessWidget {
 }
 
 class ReligionSymbolPainter extends CustomPainter {
-  const ReligionSymbolPainter(this.name, this.ink);
+  const ReligionSymbolPainter(this.name, this.ink, {this.glow = true});
   final String name;
   final Color ink;
 
+  /// The soft round glow behind the glyph (v2). The v3 tile draws the bare glyph.
+  final bool glow;
+
   @override
-  bool shouldRepaint(ReligionSymbolPainter old) => old.name != name || old.ink != ink;
+  bool shouldRepaint(ReligionSymbolPainter old) => old.name != name || old.ink != ink || old.glow != glow;
 
   static final Map<String, Path> _cache = {};
 
@@ -83,7 +93,7 @@ class ReligionSymbolPainter extends CustomPainter {
     canvas.translate((size.width - s) / 2, (size.height - s) / 2);
     canvas.scale(s, s);
     // a soft round "glow" behind the symbol, so it sits in the tile instead of floating
-    canvas.drawCircle(const Offset(0.5, 0.5), 0.45, Paint()..color = ink.withValues(alpha: 0.13));
+    if (glow) canvas.drawCircle(const Offset(0.5, 0.5), 0.45, Paint()..color = ink.withValues(alpha: 0.13));
     if (_paintNew(canvas, name)) {
       canvas.restore();
       return;

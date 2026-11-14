@@ -239,11 +239,12 @@ void main() {
       final seen = <int>{};
       for (final n in religionSymbolNames) {
         final px = await pixels(n);
-        var light = 0; // paper-coloured ink on a dark maroon tile
+        var ink = 0; // paper-coloured ink on a dark tile, or (v3 dharma: brown on gold) dark ink
         for (var i = 0; i < px.length; i += 4) {
-          if (px[i] > 235 && px[i + 1] > 235 && px[i + 2] > 215) light++;
+          if (px[i] > 235 && px[i + 1] > 235 && px[i + 2] > 215) ink++;
+          if (px[i + 3] > 200 && px[i] < 120 && px[i + 1] < 80 && px[i + 2] < 40) ink++;
         }
-        expect(light, greaterThan(150), reason: '$n has visible ink');
+        expect(ink, greaterThan(150), reason: '$n has visible ink');
         seen.add(Object.hashAll(px));
       }
       expect(seen.length, religionSymbolNames.length, reason: 'all symbols look different');

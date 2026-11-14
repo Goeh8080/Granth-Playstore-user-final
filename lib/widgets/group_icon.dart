@@ -2,10 +2,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'icon_v3_style.dart';
 import 'religion_paths.dart';
 import 'religion_symbol.dart' show ReligionSymbolPainter;
 
 part 'group_icon_new.dart';
+part 'group_icon_v3.dart';
 
 /// Round 10 — the small coloured icons of the granth groups (omma's look: a rounded cream
 /// tile with a little illustration). Drawn here with [CustomPainter], so they are crisp at
@@ -21,16 +23,16 @@ const List<String> groupIconNames = [
 ];
 
 class GroupIcon extends StatelessWidget {
-  const GroupIcon(this.name, {super.key, this.size = 56});
+  const GroupIcon(this.name, {super.key, this.size = 56, this.shimmer = false});
   final String name;
   final double size;
 
+  /// v3: a light band sweeps over the tile now and then. Off by default (keep it off in
+  /// lists); never runs with reduced motion or [GranthIconStyle.shimmerEnabled] = false.
+  final bool shimmer;
+
   @override
-  Widget build(BuildContext context) => SizedBox(
-        width: size,
-        height: size,
-        child: CustomPaint(painter: GroupIconPainter(name)),
-      );
+  Widget build(BuildContext context) => _v3Build(context);
 }
 
 const _ink = Color(0xFF5A3A1A);
@@ -39,14 +41,23 @@ const _goldDark = Color(0xFFB07A14);
 const _page = Color(0xFFFCF4E4);
 
 class GroupIconPainter extends CustomPainter {
-  const GroupIconPainter(this.name);
+  const GroupIconPainter(this.name, {this.dark = false, this.classic = false}) : _rec = false;
+  const GroupIconPainter._v3(this.name) : dark = false, classic = false, _rec = true;
   final String name;
 
+  /// v3: the app is in dark theme (deeper shadow, a faint light rim).
+  final bool dark;
+
+  /// true paints the exact v2 look ([GranthIconStyle.premium] = false).
+  final bool classic;
+  final bool _rec; // recording the v3 picture: no v2 tile, v3 book extras on
+
   @override
-  bool shouldRepaint(GroupIconPainter old) => old.name != name;
+  bool shouldRepaint(GroupIconPainter old) => old.name != name || old.dark != dark || old.classic != classic;
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (_paintV3(canvas, size)) return;
     final s = size.shortestSide;
     canvas.save();
     canvas.scale(s, s);
@@ -98,6 +109,7 @@ class GroupIconPainter extends CustomPainter {
 
   // ---- the tile ----------------------------------------------------------------------
   void _tile(Canvas c) {
+    if (_rec) return; // v3 paints its own tile
     final r = RRect.fromRectAndRadius(const Rect.fromLTWH(0.02, 0.02, 0.96, 0.96), const Radius.circular(0.27));
     c.drawRRect(r.shift(const Offset(0, 0.025)), Paint()..color = const Color(0x1F8A5A1E)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 0.03));
     c.drawRRect(
@@ -147,6 +159,7 @@ class GroupIconPainter extends CustomPainter {
   }
 
   void _book(Canvas c, Color color, {void Function(Canvas, Color)? emblem, bool trim = false}) {
+    _bookShadowV3(c, color);
     // pages (peek out right and bottom)
     final pages = RRect.fromRectAndRadius(const Rect.fromLTWH(0.27, 0.17, 0.57, 0.72), const Radius.circular(0.04));
     c.drawRRect(pages, _fill(_page));
@@ -161,6 +174,7 @@ class GroupIconPainter extends CustomPainter {
     final spine = RRect.fromRectAndCorners(const Rect.fromLTWH(0.19, 0.11, 0.1, 0.72), topLeft: const Radius.circular(0.05), bottomLeft: const Radius.circular(0.05));
     c.drawRRect(spine, _fill(_shade(color, -0.14)));
     c.drawLine(const Offset(0.31, 0.15), const Offset(0.31, 0.79), _line(_shade(color, 0.16).withValues(alpha: 0.55), 0.01));
+    _coverGlossV3(c, color);
     // bookmark ribbon
     final ribbon = Path()
       ..moveTo(0.62, 0.11)

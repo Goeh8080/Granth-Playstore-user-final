@@ -1,4 +1,4 @@
-name: Playstore - 1.0.0
+name: Playstore - 1.0.1
 
 on:
   push:
@@ -127,8 +127,8 @@ jobs:
           "$BT/aapt2" dump badging dist/granth-arm64-v8a.apk > "$RUNNER_TEMP/badging.txt"
           badge="$(grep -m1 '^package:' "$RUNNER_TEMP/badging.txt")"
           echo "$badge"
-          echo "$badge" | grep -q "name='$EXPECTED_PACKAGE' versionCode='1' versionName='1.0.0'" \
-            || { echo "::error::APK package/version is not $EXPECTED_PACKAGE 1 / 1.0.0"; exit 1; }
+          echo "$badge" | grep -q "name='$EXPECTED_PACKAGE' versionCode='2' versionName='1.0.1'" \
+            || { echo "::error::APK package/version is not $EXPECTED_PACKAGE 2 / 1.0.1"; exit 1; }
 
       - name: Play Console checks on the AAB
         if: env.DO_SIGN == 'true'
@@ -163,8 +163,8 @@ jobs:
             case "$a" in "$EXPECTED_PACKAGE".*) ;; *) echo "::error::authority $a not under $EXPECTED_PACKAGE"; exit 1;; esac
           done || fail "provider authority outside $EXPECTED_PACKAGE"
           echo "all provider authorities under $EXPECTED_PACKAGE"
-          [ "$vc" = "1" ] || fail "versionCode $vc != 1"
-          [ "$vn" = "1.0.0" ] || fail "versionName $vn != 1.0.0"
+          [ "$vc" = "2" ] || fail "versionCode $vc != 2"
+          [ "$vn" = "1.0.1" ] || fail "versionName $vn != 1.0.1"
           if grep -E 'uses-permission[^>]*(AD_ID|ACCESS_ADSERVICES_)' "$M"; then fail "AD_ID / ADSERVICES permission in merged manifest"; fi
           echo "no AD_ID / ACCESS_ADSERVICES_* permissions"
           if grep -q 'android:debuggable="true"' "$M"; then fail "debuggable=true in manifest"; fi
@@ -188,24 +188,24 @@ jobs:
           rm -f "$RUNNER_TEMP/check.apks"
           echo "bundletool validate + build-apks OK"
           # Direct (unzipped) copies: the browser download is the .aab / .apk itself, not a zip.
-          cp "$AAB" "dist/Playstore-1.0.0.aab"
-          cp dist/granth-arm64-v8a.apk "dist/Playstore-1.0.0-arm64.apk"
+          cp "$AAB" "dist/Playstore-1.0.1.aab"
+          cp dist/granth-arm64-v8a.apk "dist/Playstore-1.0.1-arm64.apk"
 
       # t408: exactly TWO artifacts, each the bare file (upload-artifact v7 archive:false, no
-      # zip, no side files): Playstore-1.0.0-arm64.apk (install on a phone) and
-      # Playstore-1.0.0.aab (upload to Play Console). The old zipped granth-flutter-* copies
+      # zip, no side files): Playstore-1.0.1-arm64.apk (install on a phone) and
+      # Playstore-1.0.1.aab (upload to Play Console). The old zipped granth-flutter-* copies
       # are gone (nothing depended on them).
       - uses: actions/upload-artifact@v7
         if: env.DO_SIGN == 'true'
         with:
-          path: dist/Playstore-1.0.0.aab
+          path: dist/Playstore-1.0.1.aab
           archive: false
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v7
         if: env.DO_SIGN == 'true'
         with:
-          path: dist/Playstore-1.0.0-arm64.apk
+          path: dist/Playstore-1.0.1-arm64.apk
           archive: false
           if-no-files-found: error
 

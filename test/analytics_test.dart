@@ -95,7 +95,7 @@ void main() {
     expect(b['app'], '1.0.1+2');
     expect(b['app_version'], '1.0.1');
     expect(b['app_version'], matches(RegExp(r'^[0-9A-Za-z.+_-]{1,24}$')));
-    expect(b['build'], 1);
+    expect(b['build'], 2);
     expect(b['app'], matches(RegExp(r'^[0-9A-Za-z.+_-]{1,24}$')));
     expect(b['os'], 'android');
     expect(b['sdk'], inInclusiveRange(0, 99));

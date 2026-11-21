@@ -94,7 +94,7 @@ AppUpdateInfo? parseAppUpdate(Object? raw) {
     apkUrl: _https(j['apk_url'] ?? j['apkUrl']),
     force: (j['force'] ?? false) == true,
     reshow: (j['reshow'] ?? false) == true,
-    minVersion: minOk ? (mv as String).trim() : null,
+    minVersion: minOk ? mv.trim() : null,
   );
 }
 

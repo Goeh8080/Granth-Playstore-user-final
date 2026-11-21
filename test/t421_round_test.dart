@@ -45,8 +45,8 @@ void main() {
       home: Scaffold(
         body: Center(
           child: SizedBox(
-            width: 160,
-            height: 160,
+            width: 180,
+            height: 240,
             child: FolderRow(cols: 2, leading: (s) => SizedBox.square(dimension: s), title: 'वेद', subtitle: '4 ग्रंथ • 10 प्रमाण', onTap: () => taps++),
           ),
         ),

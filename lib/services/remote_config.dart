@@ -6,6 +6,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../config.dart';
+import '../legal/legal_pages.dart';
+import '../theme/app_theme.dart';
 import 'app_update.dart' show AppUpdateInfo, parseAppUpdate;
 import 'notification_log.dart';
 import '../models/structure.dart';
@@ -81,6 +83,8 @@ class ParsedConfig {
     this.appUpdate,
     this.trendingTopics = const [],
     this.dailyPraman,
+    this.theme,
+    this.legal = const [],
   });
   final int version;
   final Structure? structure;
@@ -132,6 +136,12 @@ class ParsedConfig {
 
   /// `daily_praman {id, date}` (round 14, optional): the admin's pick for that UTC date.
   final DailyPick? dailyPraman;
+
+  /// t430 top-level `theme` (raw map, parsed by [ThemeOverride.parse]); null = bundled palette.
+  final Map<String, dynamic>? theme;
+
+  /// t430 top-level `legal` `[{id, title, body, updated_at}]`; empty = bundled texts.
+  final List<RemoteLegal> legal;
 }
 
 class DailyPick {
@@ -332,7 +342,8 @@ ParsedConfig? parseConfig(String text, {int cachedVersion = 0, int appBuild = kB
   }
 
   try {
-    if (text.length > 70000) return fail('too big');
+    // t430: room for the admin's legal texts (`legal`).
+    if (text.length > 400000) return fail('too big');
     final dec = jsonDecode(text.startsWith('\uFEFF') ? text.substring(1) : text);
     final j = _map(dec);
     if (j == null) return fail('not an object');
@@ -419,6 +430,8 @@ ParsedConfig? parseConfig(String text, {int cachedVersion = 0, int appBuild = kB
       appUpdate: parseAppUpdate(j['appUpdate'] ?? j['app_update']),
       trendingTopics: _parseTrending(_map(j['trending'])),
       dailyPraman: _parseDaily(_map(j['daily_praman'])),
+      theme: _map(j['theme']),
+      legal: parseLegal(j['legal']),
     );
   } catch (e) {
     return fail('error: $e');
@@ -733,6 +746,8 @@ class RemoteConfig extends ChangeNotifier {
       final d = p.dailyPraman!;
       NotificationLog.I.record(id: 'daily:${d.id}:${d.date}', kind: 'daily', title: 'आज का प्रमाण', body: _pramanTitle(d.id), link: '#/pramans?id=${Uri.encodeComponent(d.id)}');
     }
+    AppTheme.I.apply(p.theme);
+    remoteLegal = p.legal;
     Shelves.useRemote(p.structure, p.overrides);
     CatalogStore.I.setHidden(p.hidden);
     if (gridChanged) UiPrefs.I.remoteChanged();
@@ -774,6 +789,8 @@ class RemoteConfig extends ChangeNotifier {
     dailyPraman = null;
     lastResult = 'none';
     _cachedBody = null;
+    AppTheme.I.apply(null);
+    remoteLegal = const [];
     Shelves.useRemote(null, const {});
   }
 }

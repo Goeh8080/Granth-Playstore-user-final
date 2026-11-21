@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+import 'theme/app_theme.dart';
 import 'services/app_update.dart';
 import 'package:flutter/services.dart';
 
@@ -227,7 +229,7 @@ class _GranthAppState extends State<GranthApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     // the hidden iOS theme switches at once
-    listenable: UiPrefs.I,
+    listenable: Listenable.merge([UiPrefs.I, AppTheme.I]),
     builder: (context, _) => MaterialApp(
       navigatorKey: appNavigatorKey,
       title: 'ग्रंथ प्रबंधन',

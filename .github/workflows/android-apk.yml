@@ -120,6 +120,10 @@ jobs:
           echo "$out" | grep -E "Verified using v[23] scheme|SHA-256 digest" || true
           echo "$out" | grep -q "certificate SHA-256 digest: $EXPECTED_SHA256" \
             || { echo "::error::APK certificate SHA-256 mismatch"; exit 1; }
+          # t430: the Satlok signer, spelled out (starts 68C7CF34 … ends 8D0EDDDE). Only the
+          # public certificate digest is read; no secret is printed.
+          signer="$(echo "$out" | grep -m1 -oiE 'certificate SHA-256 digest: [0-9a-f]{64}' | awk '{print toupper($NF)}')"
+          case "$signer" in 68C7CF34*8D0EDDDE) echo "Signer SHA-256 ${signer:0:8}…${signer: -8} = Satlok" ;; *) echo "::error::signer is not Satlok (${signer:0:8}…${signer: -8})"; exit 1 ;; esac
           if [ -f shorebird.yaml ] && [ "$DO_SHOREBIRD" = "true" ]; then
             unzip -l dist/granth-arm64-v8a.apk | grep -q 'shorebird.yaml' || { echo "::error::APK is not a Shorebird build"; exit 1; }
           fi
@@ -239,3 +243,70 @@ jobs:
       - name: Remove signing material
         if: always()
         run: rm -f android/key.properties android/app/google-services.json "$RUNNER_TEMP/satlok.keystore" "$RUNNER_TEMP/dd.json"
+
+  # t430 (Goutam): desktop + iOS builds. Separate jobs, so they never block the Android
+  # release files above; continue-on-error while they are new. Both are UNSIGNED.
+  windows:
+    runs-on: windows-latest
+    continue-on-error: true
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+      - name: Enable Windows desktop (platform folder is committed; created only if missing)
+        shell: bash
+        run: |
+          flutter config --enable-windows-desktop
+          [ -d windows ] || flutter create --platforms=windows --org com.granth.app --project-name granthprabandhan .
+      - run: flutter pub get
+      - name: Build Windows (release, unsigned)
+        shell: bash
+        run: flutter build windows --release
+      - name: Zip
+        shell: pwsh
+        run: |
+          $v = ((Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value)
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "dist/Granth-Windows-$v.zip" -Force
+          "GRANTH_VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - uses: actions/upload-artifact@v7
+        with:
+          path: dist/Granth-Windows-${{ env.GRANTH_VERSION }}.zip
+          archive: false
+          if-no-files-found: error
+
+  ios:
+    runs-on: macos-latest
+    continue-on-error: true
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+      - name: iOS platform folder (committed; created only if missing)
+        run: |
+          [ -d ios ] || flutter create --platforms=ios --org com.granth.app --project-name granthprabandhan .
+      - run: flutter pub get
+      - name: Build iOS (release, no codesign)
+        run: flutter build ios --release --no-codesign
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          v="$(sed -nE 's/^version:[[:space:]]*([0-9.]+).*/\1/p' pubspec.yaml)"
+          echo "GRANTH_VERSION=$v" >> "$GITHUB_ENV"
+          rm -rf Payload dist && mkdir -p Payload dist
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qry "dist/Granth-iOS-$v-unsigned.ipa" Payload
+          ls -la dist
+      - uses: actions/upload-artifact@v7
+        with:
+          path: dist/Granth-iOS-${{ env.GRANTH_VERSION }}-unsigned.ipa
+          archive: false
+          if-no-files-found: error

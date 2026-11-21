@@ -281,7 +281,7 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
       child: AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle.light.copyWith(statusBarColor: GColors.maroon),
         child: Scaffold(
-          backgroundColor: GColors.cream,
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           // The AI chat's text box sits under the page (not over it), so the list is only as tall
           // as what is left above the keyboard and the last message is never hidden.
           body: Column(

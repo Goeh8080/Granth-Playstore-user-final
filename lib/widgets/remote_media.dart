@@ -31,7 +31,7 @@ class MediaCache {
   static final MediaCache I = MediaCache._();
 
   /// A single file never exceeds this (a folder icon video should be ~0.5 MB).
-  static const int maxBytes = 12 * 1024 * 1024;
+  static const int maxBytes = 16 * 1024 * 1024;
 
   final Map<String, Future<File?>> _inflight = {};
   final Map<String, File> _ready = {};
@@ -49,6 +49,10 @@ class MediaCache {
     final ext = dot >= 0 && path.length - dot <= 5 ? path.substring(dot) : '';
     return '${h.toUnsigned(64).toRadixString(16)}$ext';
   }
+
+  /// Tests / local renders: treat [f] as the downloaded copy of [url].
+  @visibleForTesting
+  void debugPut(String url, File f) => _ready[url] = f;
 
   /// Already on disk this session (no async gap → no fallback flash on rebuilds).
   File? readySync(String url) => _ready[url];
@@ -92,7 +96,7 @@ class LoopVideo extends StatefulWidget {
   final bool loop;
 
   /// At most this many players exist at once (the rest show their fallback).
-  static const int maxLive = 8;
+  static const int maxLive = 6;
   static int _live = 0;
 
   @override
@@ -162,6 +166,13 @@ class _LoopVideoState extends State<LoopVideo> with WidgetsBindingObserver {
       vis = r.overlaps(Offset.zero & MediaQuery.sizeOf(context));
     }
     _visible = vis;
+    // t430: a looping tile that scrolled off screen gives its decoder back (at most
+    // [maxLive] at once); it starts again from the cached file when it comes back.
+    if (!vis && widget.loop && _c != null && _ready) {
+      _drop();
+      if (mounted) setState(() {});
+      return;
+    }
     if (vis && _c == null && !_failed) _init();
     _apply();
   }

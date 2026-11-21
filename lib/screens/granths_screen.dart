@@ -37,7 +37,7 @@ class GranthsPanel extends StatefulWidget {
     super.key,
     this.placeKey = 'granth-list-place',
     this.scope,
-    this.title = 'Granths',
+    this.title = 'ग्रंथ',
     this.subtitle = 'पवित्र ग्रंथ',
     this.leading,
     this.idle,

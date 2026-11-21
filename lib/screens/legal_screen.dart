@@ -16,6 +16,83 @@ import '../widgets/panel.dart';
 
 const String kContactsSlug = 'contacts';
 
+/// t430: set while the legal pages are open on their own (from the login page, before sign-in,
+/// where the app's tabs are not there): a card then opens inside that screen.
+ValueChanged<String?>? _standaloneOpen;
+
+/// Opens one policy ([slug]) — inside the standalone legal screen when it is open, else as an
+/// app page (`#/legal?p=<slug>`).
+void openLegal(String slug) {
+  final o = _standaloneOpen;
+  if (o != null) return o(slug);
+  AppNav.I.openLink('#/legal?p=$slug');
+}
+
+/// t430 (Goutam): the red "नियम और शर्तें" / "गोपनीयता नीति" on the login page open the full
+/// list of policy cards here, without signing in. Back goes from a policy to the list, then
+/// back to the login page.
+class LegalStandaloneScreen extends StatefulWidget {
+  const LegalStandaloneScreen({super.key, this.page});
+  final String? page;
+
+  static Future<void> open(BuildContext context, {String? page}) =>
+      Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(builder: (_) => LegalStandaloneScreen(page: page)));
+
+  @override
+  State<LegalStandaloneScreen> createState() => _LegalStandaloneScreenState();
+}
+
+class _LegalStandaloneScreenState extends State<LegalStandaloneScreen> {
+  late String? _page = widget.page;
+  ValueChanged<String?>? _prev;
+
+  @override
+  void initState() {
+    super.initState();
+    _prev = _standaloneOpen;
+    _standaloneOpen = (s) => setState(() => _page = s);
+  }
+
+  @override
+  void dispose() {
+    _standaloneOpen = _prev;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+        canPop: _page == null,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) setState(() => _page = null);
+        },
+        child: Scaffold(
+          key: const ValueKey('legal-standalone'),
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          body: SafeArea(
+            child: Column(children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: IconButton(
+                  key: const ValueKey('legal-standalone-back'),
+                  tooltip: 'वापस',
+                  onPressed: () => _page == null ? Navigator.of(context).maybePop() : setState(() => _page = null),
+                  icon: const GIcon('chevron-left', size: 24, color: GColors.maroon),
+                ),
+              ),
+              Expanded(
+                child: CustomScrollView(slivers: [
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                    sliver: LegalPanel(key: ValueKey('legal-standalone-${_page ?? 'list'}'), page: _page),
+                  ),
+                ]),
+              ),
+            ]),
+          ),
+        ),
+      );
+}
+
 /// `#/legal` (the list of policies), `#/legal?p=<slug>` (one policy) and `#/legal?p=contacts`
 /// (विशेष जानकार). Everything is bundled, so it reads offline.
 class LegalPanel extends StatelessWidget {
@@ -49,13 +126,13 @@ class _LegalList extends StatelessWidget {
           ),
         ),
         SliverList.builder(
-          itemCount: kLegalPages.length + 1,
+          itemCount: legalPages().length + 1,
           itemBuilder: (context, i) {
             if (i == 0) {
-              return _row(key: const ValueKey('legal-contacts'), icon: 'phone', title: RemoteConfig.I.contactsTitle, blurb: 'ऐप से जुड़े विशेष जानकार लोग', onTap: () => AppNav.I.openLink('#/legal?p=$kContactsSlug'));
+              return _row(key: const ValueKey('legal-contacts'), icon: 'phone', title: RemoteConfig.I.contactsTitle, blurb: 'ऐप से जुड़े विशेष जानकार लोग', onTap: () => openLegal(kContactsSlug));
             }
-            final p = kLegalPages[i - 1];
-            return _row(key: ValueKey('legal-${p.slug}'), icon: p.icon, title: p.title, blurb: p.blurb, onTap: () => AppNav.I.openLink('#/legal?p=${p.slug}'));
+            final p = legalPages()[i - 1];
+            return _row(key: ValueKey('legal-${p.slug}'), icon: p.icon, title: p.title, blurb: p.blurb, onTap: () => openLegal(p.slug));
           },
         ),
         SliverToBoxAdapter(
@@ -162,19 +239,19 @@ class _Extras extends StatelessWidget {
         );
     switch (slug) {
       case 'privacy':
-        pills.add(pill('x-ai', 'sparkles', 'AI उपयोग नीति', () => AppNav.I.openLink('#/legal?p=ai')));
-        pills.add(pill('x-delete', 'trash-2', 'डेटा हटाने का अधिकार', () => AppNav.I.openLink('#/legal?p=delete')));
+        pills.add(pill('x-ai', 'sparkles', 'AI उपयोग नीति', () => openLegal('ai')));
+        pills.add(pill('x-delete', 'trash-2', 'डेटा हटाने का अधिकार', () => openLegal('delete')));
       case 'delete':
         pills.add(pill('clear-chats', 'trash-2', 'चैट इतिहास मिटाएँ', () => clearChatHistory(context), tone: PillTone.maroon));
       case 'thirdparty':
         pills.add(pill('licenses', 'library', 'ओपन-सोर्स लाइसेंस देखें', () => showLicensePage(context: context, applicationName: 'ग्रंथ प्रबंधन', applicationVersion: kAppVersion)));
       case 'grievance':
         if (hasContactEmail) pills.add(pill('mail-us', 'send', kContactEmail, () => FileActions.openMail(kContactEmail), tone: PillTone.maroon));
-        pills.add(pill('x-contacts', 'phone', RemoteConfig.I.contactsTitle, () => AppNav.I.openLink('#/legal?p=$kContactsSlug')));
+        pills.add(pill('x-contacts', 'phone', RemoteConfig.I.contactsTitle, () => openLegal(kContactsSlug)));
       case 'copyright':
-        pills.add(pill('x-grievance', 'message-circle', 'शिकायत और संपर्क', () => AppNav.I.openLink('#/legal?p=grievance')));
+        pills.add(pill('x-grievance', 'message-circle', 'शिकायत और संपर्क', () => openLegal('grievance')));
       case 'ai':
-        pills.add(pill('x-privacy', 'shield', 'गोपनीयता नीति', () => AppNav.I.openLink('#/legal?p=privacy')));
+        pills.add(pill('x-privacy', 'shield', 'गोपनीयता नीति', () => openLegal('privacy')));
     }
     if (pills.isEmpty) return const SizedBox.shrink();
     return Padding(padding: const EdgeInsets.only(top: 14), child: Wrap(spacing: 8, runSpacing: 8, children: pills));

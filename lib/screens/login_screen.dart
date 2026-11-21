@@ -20,6 +20,8 @@ import '../state/motion.dart';
 import '../state/toast.dart';
 import '../theme/colors.dart';
 import '../widgets/common.dart';
+import '../theme/app_theme.dart';
+import 'legal_screen.dart' show LegalStandaloneScreen;
 
 /// Shows [LoginPage] in front of [child] until the user signs in or skips.
 class LoginGate extends StatefulWidget {
@@ -171,7 +173,7 @@ class LoginPage extends StatelessWidget {
       if (!didPop) NativeBridge.exitApp().catchError((Object _) => SystemNavigator.pop());
     },
     child: Scaffold(
-      backgroundColor: GColors.cream,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Stack(children: [
         const Positioned.fill(child: AuroraBackground()),
         SafeArea(
@@ -214,7 +216,7 @@ class LoginPage extends StatelessWidget {
                         constraints: const BoxConstraints(maxWidth: 400),
                         padding: const EdgeInsets.fromLTRB(20, 40, 20, 24),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFFFDF7).withValues(alpha: 0.72),
+                          color: const Color(0xFFFFFFFF).withValues(alpha: 0.72),
                           borderRadius: const BorderRadius.vertical(top: Radius.circular(200), bottom: Radius.circular(28)),
                           border: Border.all(color: GColors.goldLight, width: 1.2),
                         ),
@@ -236,7 +238,7 @@ class LoginPage extends StatelessWidget {
                 Container(
                   padding: EdgeInsets.fromLTRB(24, 22, 24, 14 + MediaQuery.paddingOf(context).bottom),
                   decoration: const BoxDecoration(
-                    color: Color(0xFFFFFDF7),
+                    color: Color(0xFFFFFFFF),
                     borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
                     boxShadow: [BoxShadow(color: Color(0x1A4A2C0A), blurRadius: 18, offset: Offset(0, -4))],
                   ),
@@ -294,16 +296,25 @@ class LoginPage extends StatelessWidget {
                           ),
                         ),
                       ),
-                    Text.rich(
-                      TextSpan(children: [
-                        const TextSpan(text: 'आगे बढ़ने पर '),
-                        TextSpan(text: 'नियम और शर्तें', style: GText.sans(size: 11.5, weight: FontWeight.w700, color: GColors.maroon).copyWith(decoration: TextDecoration.underline)),
-                        const TextSpan(text: ' व '),
-                        TextSpan(text: 'गोपनीयता नीति', style: GText.sans(size: 11.5, weight: FontWeight.w700, color: GColors.maroon).copyWith(decoration: TextDecoration.underline)),
-                        const TextSpan(text: ' लागू होंगी'),
-                      ]),
-                      textAlign: TextAlign.center,
-                      style: GText.sans(size: 11.5, color: GColors.muted),
+                    // t430 (Goutam): both red links open the policy cards right here, before
+                    // sign-in (a big enough tap area around the small text).
+                    Pressable(
+                      key: const ValueKey('login-legal'),
+                      onTap: () => LegalStandaloneScreen.open(context),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Text.rich(
+                          TextSpan(children: [
+                            const TextSpan(text: 'आगे बढ़ने पर '),
+                            TextSpan(text: 'नियम और शर्तें', style: GText.sans(size: 11.5, weight: FontWeight.w700, color: GColors.maroon).copyWith(decoration: TextDecoration.underline)),
+                            const TextSpan(text: ' व '),
+                            TextSpan(text: 'गोपनीयता नीति', style: GText.sans(size: 11.5, weight: FontWeight.w700, color: GColors.maroon).copyWith(decoration: TextDecoration.underline)),
+                            const TextSpan(text: ' लागू होंगी'),
+                          ]),
+                          textAlign: TextAlign.center,
+                          style: GText.sans(size: 11.5, color: GColors.muted),
+                        ),
+                      ),
                     ),
                   ]),
                 ),
@@ -317,7 +328,7 @@ class LoginPage extends StatelessWidget {
 }
 
 /// t408 (approved FLUTTER_ANIMATED_LOGIN_BG): cream gradient with 4 soft colour blobs on slow
-/// orbits (14 s loop, RadialGradient — no real blur). Still at t = 0 with reduced motion.
+/// orbits (16 s loop, RadialGradient — no real blur). Still at t = 0 with reduced motion.
 class AuroraBackground extends StatefulWidget {
   const AuroraBackground({super.key});
   @override
@@ -325,7 +336,7 @@ class AuroraBackground extends StatefulWidget {
 }
 
 class _AuroraBackgroundState extends State<AuroraBackground> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 14));
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 16));
 
   @override
   void didChangeDependencies() {
@@ -364,13 +375,20 @@ class _AuroraBackgroundState extends State<AuroraBackground> with SingleTickerPr
   @override
   Widget build(BuildContext context) => RepaintBoundary(
         child: AnimatedBuilder(
-          animation: _c,
+          animation: Listenable.merge([_c, AppTheme.I]),
           builder: (_, _) {
             final t = _c.value;
             return Stack(fit: StackFit.expand, children: [
-              const DecoratedBox(
+              // t430 (Goutam): the colours themselves drift slowly — the gradient turns once
+              // per 16 s cycle (admin `theme.login_gradient`, else the bundled peach/saffron).
+              DecoratedBox(
+                key: const ValueKey('login-gradient'),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFFFF8EA), Color(0xFFFDF3DC), Color(0xFFF6E6C4)]),
+                  gradient: LinearGradient(
+                    begin: Alignment(math.cos(2 * math.pi * t) * 1.2, -1 + 0.6 * math.sin(2 * math.pi * t)),
+                    end: Alignment(-math.cos(2 * math.pi * t) * 1.2, 1 - 0.6 * math.sin(2 * math.pi * t)),
+                    colors: AppTheme.I.loginGradient,
+                  ),
                 ),
               ),
               _blob(t, 260, const Color(0x80F5C878), 40, false, rt: -60, top: -60),
@@ -405,7 +423,7 @@ class TermsPage extends StatelessWidget {
       if (!didPop) NativeBridge.exitApp().catchError((Object _) => SystemNavigator.pop());
     },
     child: Scaffold(
-      backgroundColor: GColors.cream,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFFFF7EA), GColors.cream]),
@@ -437,7 +455,7 @@ class TermsPage extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFFFDF7),
+                          color: const Color(0xFFFFFFFF),
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(color: GColors.gold.withValues(alpha: 0.55)),
                         ),

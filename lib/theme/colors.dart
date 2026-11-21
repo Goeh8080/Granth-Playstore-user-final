@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 
+import 'app_theme.dart';
+
 /// Exact palette from the original web app (`@layer theme` in index.html).
 class GColors {
   GColors._();
@@ -10,19 +12,20 @@ class GColors {
   static const maroonLight = Color(0xFFA0293D);
   static const gold = Color(0xFFC9A84C);
   static const goldLight = Color(0xFFE2C97E);
-  static const cream = Color(0xFFFDF6E3);
+  /// t430 (Goutam): surfaces / scaffold are pure white (was the web app's #FDF6E3 cream).
+  static const cream = Color(0xFFFFFFFF);
   static const creamDark = Color(0xFFF5E6C8);
   static const brown = Color(0xFF4A2C0A);
   static const text = Color(0xFF3D1F00);
   static const muted = Color(0xFF8B6A4A);
-  static const paper = Color(0xFFFFFDF7);
+  static const paper = Color(0xFFFFFFFF);
 
   // color-mix() results used by the CSS.
   static const syncStrip = Color(0xFFF7EBD3);
   static const pill = Color(0xFFF5EFDF);
   static const pillMaroon = Color(0xFFF2E9EA);
   static const pillTopic = Color(0xFFFCEEDF);
-  static const stickyBar = Color(0xFFFDF7E6);
+  static const stickyBar = Color(0xFFFFFFFF);
   static const meterTrack = Color(0xFFECE1C0);
   static const lightbox = Color(0xFF3D2408);
   static const online = Color(0xFF2F7D32);
@@ -75,11 +78,15 @@ class GText {
 }
 
 /// [ios]: the hidden iOS theme — Cupertino page slides, no ink splash, rounder dialogs.
+/// t430: [AppTheme] (admin `theme` key) sets primary / secondary / background / surface.
 ThemeData buildTheme({bool ios = false}) {
+  final t = AppTheme.I;
   final base = ThemeData(
     useMaterial3: true,
-    colorScheme: ColorScheme.fromSeed(seedColor: GColors.maroon, primary: GColors.maroon, surface: GColors.cream),
-    scaffoldBackgroundColor: GColors.cream,
+    colorScheme: ColorScheme.fromSeed(seedColor: t.primary, primary: t.primary, secondary: t.secondary, surface: t.surface),
+    scaffoldBackgroundColor: t.background,
+    canvasColor: t.background,
+    cardColor: t.surface,
     fontFamily: GFonts.sans,
     fontFamilyFallback: GFonts.sansFallback,
     splashFactory: ios ? NoSplash.splashFactory : InkSparkle.splashFactory,
@@ -90,7 +97,7 @@ ThemeData buildTheme({bool ios = false}) {
     pageTransitionsTheme: PageTransitionsTheme(builders: {
       TargetPlatform.android: ios ? const CupertinoPageTransitionsBuilder() : const FadeForwardsPageTransitionsBuilder(),
     }),
-    dialogTheme: ios ? DialogThemeData(backgroundColor: const Color(0xFFFFFEFB), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24))) : null,
+    dialogTheme: ios ? DialogThemeData(backgroundColor: t.surface, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24))) : null,
     bottomSheetTheme: ios ? const BottomSheetThemeData(shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(26)))) : null,
   );
 }

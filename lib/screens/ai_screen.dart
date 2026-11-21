@@ -1400,7 +1400,7 @@ class QuizOptions extends StatelessWidget {
           final (bg, line, fg) = switch (tone) {
             'right' => (kGreenBg, kGreenLine, kGreen),
             'wrong' => (kRedBg, kRedLine, kRed),
-            'picked' => (GColors.cream, GColors.gold, GColors.maroon),
+            'picked' => (Color(0xFFFDF6E3), GColors.gold, GColors.maroon),
             _ => (Colors.white, GColors.gold, GColors.maroon),
           };
           final mark = tone == 'right' ? '✓ ' : tone == 'wrong' && sel == i ? '✗ ' : '';

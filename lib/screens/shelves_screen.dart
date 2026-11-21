@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -75,7 +76,7 @@ class ShelvesPanel extends StatelessWidget {
       scope: ShelfScope(religion.id, group.id, group.hasSubgroups ? leaf.id : null),
       title: leaf.title,
       subtitle: group.hasSubgroups ? '${religion.title} • ${group.title}' : religion.title,
-      leading: folderPic(group.hasSubgroups ? 'folder:${group.id}/${leaf.id}' : 'folder:${group.id}', 44, GroupIcon(leaf.icon, size: 44)),
+      leading: folderPic(group.hasSubgroups ? 'folder:${group.id}/${leaf.id}' : 'folder:${group.id}', 44, GroupIcon(leaf.icon, size: 44), iconKey: leaf.icon),
       emptyNote: leaf.comingSoon,
     );
   }
@@ -189,12 +190,13 @@ class FolderRow extends StatelessWidget {
 /// t421: a folder's picture — the admin's manifest override for [target] (`folder:<id>` or
 /// `folder:<group>/<sub>`): video (placement `folder`) › icon (PNG/WebP) › the built-in v3
 /// [painted] icon (also while loading / offline / on any error).
-Widget folderPic(String target, double size, Widget painted) => ListenableBuilder(
+/// t430 contract: `folder:<path>` wins, else `key:<icon key>` ([iconKey], the folder's own
+/// icon), else the painted icon. Folder / icon videos loop (muted) unless `loop: false`.
+Widget folderPic(String target, double size, Widget painted, {String? iconKey}) => ListenableBuilder(
       listenable: MediaManifest.I,
       builder: (context, _) {
-        final m = MediaManifest.I;
-        final v = m.videoFor('folder', target: target);
-        return RemoteIcon(imageUrl: m.iconFor(target), videoUrl: v?.url, posterUrl: v?.posterUrl, loop: v?.loop ?? false, size: size, fallback: painted);
+        final l = MediaManifest.I.logoFor(folderPath: target.startsWith('folder:') ? target.substring(7) : target, iconKey: iconKey);
+        return RemoteIcon(imageUrl: l.image, videoUrl: l.video?.url, posterUrl: l.poster, loop: l.video?.loop ?? true, size: size, fallback: painted);
       },
     );
 
@@ -313,7 +315,7 @@ class _ReligionFolders extends StatelessWidget {
       ids.add(r.id);
       rows.add(FolderRow(
         cols: cols,
-        leading: (size) => folderPic('folder:${r.id}', size, ReligionSymbol(r.icon, tone: _tone(r.tone), size: size)),
+        leading: (size) => folderPic('folder:${r.id}', size, ReligionSymbol(r.icon, tone: _tone(r.tone), size: size), iconKey: r.icon),
         title: r.title,
         subtitle: list.isEmpty ? (r.comingSoon.isNotEmpty ? r.comingSoon : 'जल्द आ रहा है') : _count(list.length, ShelfIndex.pramans(list)),
         dim: list.isEmpty,
@@ -326,7 +328,7 @@ class _ReligionFolders extends StatelessWidget {
       ids.add(kOtherId);
       rows.add(FolderRow(
         cols: cols,
-        leading: (size) => folderPic('folder:$kOtherId', size, ReligionSymbol(index.structure.other.icon, tone: _tone(index.structure.other.tone), size: size)),
+        leading: (size) => folderPic('folder:$kOtherId', size, ReligionSymbol(index.structure.other.icon, tone: _tone(index.structure.other.tone), size: size), iconKey: index.structure.other.icon),
         title: index.structure.other.title,
         subtitle: other.isEmpty ? index.structure.other.comingSoon : _count(other.length, ShelfIndex.pramans(other)),
         dim: other.isEmpty,
@@ -386,7 +388,7 @@ class _FolderScreenState extends State<_FolderScreen> with LivePanel {
       ids.add(c.id);
       rows.add(FolderRow(
         cols: cols,
-        leading: (size) => folderPic(group == null ? 'folder:${c.id}' : 'folder:${group.id}/${c.id}', size, GroupIcon(c.icon, size: size)),
+        leading: (size) => folderPic(group == null ? 'folder:${c.id}' : 'folder:${group.id}/${c.id}', size, GroupIcon(c.icon, size: size), iconKey: c.icon),
         title: c.title,
         subtitle: _count(list.length, ShelfIndex.pramans(list)),
         navHash: GRoute.folderHash(religion: religion.id, group: group?.id ?? c.id, sub: group == null ? null : c.id),
@@ -402,8 +404,8 @@ class _FolderScreenState extends State<_FolderScreen> with LivePanel {
             tone: _tone(religion.tone),
             icon: religion.icon,
             leading: group == null
-                ? folderPic('folder:${religion.id}', 44, ReligionSymbol(religion.icon, tone: _tone(religion.tone), size: 44))
-                : folderPic('folder:${group.id}', 44, GroupIcon(group.icon, size: 44)),
+                ? folderPic('folder:${religion.id}', 44, ReligionSymbol(religion.icon, tone: _tone(religion.tone), size: 44), iconKey: religion.icon)
+                : folderPic('folder:${group.id}', 44, GroupIcon(group.icon, size: 44), iconKey: group.icon),
             tools: Tools(
               grid: GridSwitch(locked: UiPrefs.I.gridLocked(searching ? 'granths' : 'shelves'), options: const [1, 2, 3], value: cols, onChanged: (v) => UiPrefs.I.setCols(Store.kGranthCols, v)),
               search: SearchField(placeholder: 'सभी ग्रंथों में खोजें', initial: _query, onChanged: (q) {
@@ -450,6 +452,7 @@ class _RootGranths extends StatefulWidget {
 class _RootGranthsState extends State<_RootGranths> {
   String get _mode => granthViewMode();
   bool _asking = false;
+  Timer? _retry;
 
   @override
   void initState() {
@@ -470,10 +473,23 @@ class _RootGranthsState extends State<_RootGranths> {
     if (mounted) setState(_schedule);
   }
 
+  /// t430: asked on the first visit to the Granth tab, and asked again on a later frame if
+  /// the question was lost (closed by another popup, or the tab was not on screen yet), until
+  /// a choice is saved. Once saved it is never asked again.
   void _schedule() {
-    if (!_needsChoice) return;
+    if (!_needsChoice || _asking) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _needsChoice && !_asking) _choose();
+      if (!mounted || !_needsChoice || _asking) return;
+      final route = ModalRoute.of(context);
+      if (route != null && !route.isCurrent) {
+        // Something (splash, sign-in, another popup) is on top: try again shortly.
+        _retry ??= Timer(const Duration(milliseconds: 400), () {
+          _retry = null;
+          if (mounted) setState(_schedule);
+        });
+        return;
+      }
+      _choose();
     });
   }
 
@@ -495,6 +511,7 @@ class _RootGranthsState extends State<_RootGranths> {
     granthViewChanged.removeListener(_changed);
     RemoteConfig.I.removeListener(_cfg);
     Store.I.adopted.removeListener(_prefsReady);
+    _retry?.cancel();
     super.dispose();
   }
 
@@ -503,7 +520,13 @@ class _RootGranthsState extends State<_RootGranths> {
     // Must pick one (no Back / outside tap), so the question is asked only once.
     final mode = await showPop<String>(context, (_) => const PopScope(canPop: false, child: GranthViewChoice()), dismissible: false, barrierOpacity: 0.55);
     _asking = false;
-    if (mode == null || !mounted) return;
+    if (!mounted) return;
+    if (mode == null) {
+      // Closed without a choice (e.g. another popup popped it): ask again.
+      _schedule();
+      WidgetsBinding.instance.scheduleFrame();
+      return;
+    }
     await setGranthView(mode);
     if (mounted) setState(() {});
   }
@@ -549,8 +572,8 @@ class GranthViewChoice extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // t421 ("video selection ke liye nahi aa raha"): a looping brand video (lotus =
-            // folders, book = one list; admin may replace them), the live miniature while it
+            // t430: the real scrolling preview of the view (folders /
+            // one list; admin may replace them), the live miniature while it
             // loads or if video cannot play.
             SizedBox(
               height: imageHeight,

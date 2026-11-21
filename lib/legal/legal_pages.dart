@@ -272,8 +272,92 @@ final List<LegalPage> kLegalPages = [
       ]),
 ];
 
+/// t430 — admin-edited legal texts: optional top-level `legal` key of /config.json:
+/// `[{"id": "privacy", "title": "…", "body": "…", "updated_at": "2026-11-21"}]`.
+/// An `id` equal to a bundled page's slug (privacy, terms, ai, delete, grievance, …) replaces
+/// that page's title and text; a new `id` adds a page. `body` is plain text: blank line =
+/// new paragraph, a line starting with `## ` = heading, lines starting with `- ` / `• ` =
+/// bullets. Anything malformed is skipped; no key = the bundled pages.
+class RemoteLegal {
+  const RemoteLegal({required this.id, required this.title, required this.body, this.updatedAt = ''});
+  final String id, title, body, updatedAt;
+}
+
+final _legalId = RegExp(r'^[a-z0-9][a-z0-9_-]{0,40}$');
+
+List<RemoteLegal> parseLegal(Object? raw) {
+  if (raw is! List) return const [];
+  final out = <RemoteLegal>[];
+  final seen = <String>{};
+  for (final e in raw) {
+    if (e is! Map) continue;
+    final id = e['id'], title = e['title'], body = e['body'];
+    if (id is! String || !_legalId.hasMatch(id) || id == 'contacts' || !seen.add(id)) continue;
+    if (title is! String || title.trim().isEmpty || title.length > 120) continue;
+    if (out.length >= 32) break;
+    if (body is! String || body.trim().isEmpty || body.length > 60000) continue;
+    out.add(RemoteLegal(id: id, title: title.trim(), body: body, updatedAt: e['updated_at'] is String ? (e['updated_at'] as String).trim() : ''));
+  }
+  return out;
+}
+
+List<LegalBlock> legalBlocksFromText(String body, {String updatedAt = ''}) {
+  final out = <LegalBlock>[if (updatedAt.isNotEmpty) _p('अंतिम अपडेट: $updatedAt')];
+  final para = <String>[];
+  final bullets = <String>[];
+  void flush() {
+    if (para.isNotEmpty) out.add(_p(para.join(' ')));
+    para.clear();
+    if (bullets.isNotEmpty) out.add(_b(List.of(bullets)));
+    bullets.clear();
+  }
+
+  for (final raw in body.replaceAll('\r\n', '\n').split('\n')) {
+    final l = raw.trim().replaceAll('**', '').replaceAll('__', '');
+    if (l.isEmpty) {
+      flush();
+    } else if (l.startsWith('## ') || l.startsWith('# ')) {
+      flush();
+      out.add(_h(l.replaceFirst(RegExp(r'^#+\s*'), '')));
+    } else if (l.startsWith('- ') || l.startsWith('• ') || l.startsWith('* ')) {
+      if (para.isNotEmpty) {
+        out.add(_p(para.join(' ')));
+        para.clear();
+      }
+      bullets.add(l.substring(2).trim());
+    } else {
+      if (bullets.isNotEmpty) {
+        out.add(_b(List.of(bullets)));
+        bullets.clear();
+      }
+      para.add(l);
+    }
+  }
+  flush();
+  return out;
+}
+
+/// Set by RemoteConfig on every sync.
+List<RemoteLegal> remoteLegal = const [];
+
+/// The pages to show: the bundled ones with the admin's edits, then the admin's new ones.
+List<LegalPage> legalPages() {
+  if (remoteLegal.isEmpty) return kLegalPages;
+  // Admin array order = display order; bundled pages the admin did not publish follow.
+  final bundled = {for (final p in kLegalPages) p.slug: p};
+  final ids = {for (final r in remoteLegal) r.id};
+  String day(String at) => at.length >= 10 ? at.substring(0, 10) : at;
+  return [
+    for (final r in remoteLegal)
+      LegalPage(r.id, r.title, bundled[r.id]?.icon ?? 'file-text', bundled[r.id]?.blurb ?? (r.updatedAt.isEmpty ? '' : 'अंतिम अपडेट: ${day(r.updatedAt)}'),
+          () => legalBlocksFromText(r.body, updatedAt: day(r.updatedAt))),
+    for (final p in kLegalPages)
+      if (!ids.contains(p.slug)) p,
+  ];
+}
+
 LegalPage? legalBySlug(String? slug) {
-  for (final p in kLegalPages) {
+  for (final p in legalPages()) {
     if (p.slug == slug) return p;
   }
   return null;

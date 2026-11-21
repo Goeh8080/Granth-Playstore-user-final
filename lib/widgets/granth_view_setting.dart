@@ -50,13 +50,14 @@ List<Widget> granthViewPills({VoidCallback? after}) {
   ];
 }
 
-/// t421: the chooser / Settings loops — lotus for फ़ोल्डर, book for एक सूची (bundled, muted,
-/// ~300 KB each). The admin may replace them with media-manifest videos of placement
+/// t430: the chooser / Settings loops are real scrolling previews of the two views — the
+/// religion folders (फ़ोल्डर — श्रेणियों में) and the single list (सभी ग्रंथ — एक सूची में),
+/// rendered from the app itself (6 s seamless loops, 360×480 H.264, muted, ≤ 330 KB each). The admin may replace them with media-manifest videos of placement
 /// `chooser_folders` / `chooser_list` (a failing URL falls back to the bundled clip). Placement
 /// `settings` is a general Settings background and is NOT used here.
 const Map<String, String> kGranthViewVideoAsset = {
-  'folders': 'assets/brand/video/lotus_folders.mp4',
-  'list': 'assets/brand/video/book_list.mp4',
+  'folders': 'assets/brand/video/chooser_folders.mp4',
+  'list': 'assets/brand/video/chooser_list.mp4',
 };
 
 ManifestVideo? granthViewVideoOverride(String mode) => MediaManifest.I.videoFor(mode == 'list' ? 'chooser_list' : 'chooser_folders');

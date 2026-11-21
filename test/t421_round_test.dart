@@ -92,7 +92,7 @@ void main() {
     final mm = MediaManifest()..debugSet(m);
     expect(mm.videoFor('chooser_list')!.url, 'https://m.x/b.mp4', reason: 'youtube skipped');
     expect(mm.videoFor('chooser_list')!.loop, isFalse, reason: 'default: play once');
-    expect(mm.videoFor('chooser_folders'), isNull, reason: 'bundled lotus stays');
+    expect(mm.videoFor('chooser_folders'), isNull, reason: 'bundled preview stays');
     expect(mm.videoFor('folder', target: 'folder:ved')!.loop, isTrue);
     expect(mm.videoFor('folder', target: 'folder:ved')!.posterUrl, 'https://m.x/ved.jpg');
     expect(mm.videoFor('settings')!.url, 'https://m.x/bg.mp4');
@@ -128,14 +128,14 @@ void main() {
     await t.pumpWidget(const MaterialApp(
       home: Column(children: [
         RemoteIcon(size: 40, fallback: Text('painted')),
-        SizedBox(width: 80, height: 80, child: LoopVideo(asset: 'assets/brand/video/lotus_folders.mp4', fallback: Text('mini'))),
+        SizedBox(width: 80, height: 80, child: LoopVideo(asset: 'assets/brand/video/chooser_folders.mp4', fallback: Text('mini'))),
       ]),
     ));
     await t.pump(const Duration(milliseconds: 100));
     expect(find.text('painted'), findsOneWidget);
     expect(find.text('mini'), findsOneWidget);
-    expect(File('assets/brand/video/lotus_folders.mp4').lengthSync(), lessThan(420 * 1024));
-    expect(File('assets/brand/video/book_list.mp4').lengthSync(), lessThan(420 * 1024));
+    expect(File('assets/brand/video/chooser_folders.mp4').lengthSync(), lessThan(420 * 1024));
+    expect(File('assets/brand/video/chooser_list.mp4').lengthSync(), lessThan(420 * 1024));
   });
 
   test('the AI Navigator is gone (Goutam 21 Nov): no mic permission, no speech plugin, taps only', () {

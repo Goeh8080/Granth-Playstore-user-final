@@ -1,6 +1,9 @@
 /// t421 (§33 handoff) — admin-managed icons + videos from the PUBLIC media manifest:
-/// `GET https://granth.wnmsolutions.com/media/manifest.json` (ETag / 304; empty lists until the
-/// server is deployed). Optional and decorative: any failure keeps the built-in v3 icons and
+/// `GET https://granth-admin.vedpuran8090.workers.dev/media/manifest.json` (schema 1, ETag / 304,
+/// max-age 300). t430 additive contract: `active_pack` + `packs: [{id, name, builtin}]`; icons and
+/// videos carry `pack` (only the active pack's are used; an item without `pack` is always used);
+/// targets `folder:<path>`, `key:<icon_key>`, `slot:<name>` and `slot:page:<route>`; video
+/// placement `icon`. `p_builtin` with no overrides = empty lists = the bundled 56 vectors. Optional and decorative: any failure keeps the built-in v3 icons and
 /// the bundled videos. The last good manifest is kept (offline starts use it). Contract:
 /// docs/REMOTE_MEDIA.md.
 library;
@@ -14,10 +17,13 @@ import 'package:flutter/foundation.dart';
 
 import 'storage.dart';
 
-const String kMediaManifestUrl = String.fromEnvironment('MEDIA_MANIFEST_URL', defaultValue: 'https://granth.wnmsolutions.com/media/manifest.json');
+const String kMediaManifestUrl = String.fromEnvironment('MEDIA_MANIFEST_URL', defaultValue: 'https://granth-admin.vedpuran8090.workers.dev/media/manifest.json');
 
 /// Placements the app knows (others are kept but unused).
-const Set<String> kMediaPlacements = {'home', 'granths', 'settings', 'login', 'splash', 'dashboard', 'folder', 'chooser_folders', 'chooser_list'};
+const Set<String> kMediaPlacements = {'home', 'granths', 'settings', 'login', 'splash', 'dashboard', 'folder', 'icon', 'chooser_folders', 'chooser_list'};
+
+/// Pages a `slot:page:<route>` target can name.
+const Set<String> kPageSlots = {'home', 'granths', 'settings', 'login', 'splash', 'dashboard'};
 
 /// Providers `video_player` can play directly (youtube / google_drive are skipped for tile /
 /// background use: poster or nothing).
@@ -38,7 +44,8 @@ class ManifestVideo {
   final String? target;
   final String? posterUrl;
 
-  /// Default: play once (muted) and hold the last frame; loop only when true.
+  /// `folder` / `icon` placements loop unless the server sends `loop: false`; the others
+  /// (chooser, page backgrounds) play once (muted) and hold the last frame unless `loop: true`.
   final bool loop;
   final int position;
   bool get playable => kPlayableProviders.contains(provider);
@@ -58,12 +65,31 @@ String? _https(Object? v, {Set<String>? exts}) {
   return s;
 }
 
-final _target = RegExp(r'^(folder|slot):[a-z0-9][a-z0-9_/-]{0,80}$');
+final _target = RegExp(r'^(folder|slot|key):[a-z0-9][a-z0-9_/-]{0,80}$');
+final _pageSlot = RegExp(r'^slot:page:([a-z]+)$');
+
+/// A target the app understands, or null (`''` / unknown = library only, ignored).
+String? parseMediaTarget(Object? t) {
+  if (t is! String) return null;
+  final v = t.trim();
+  final page = _pageSlot.firstMatch(v);
+  if (page != null) return kPageSlots.contains(page.group(1)) ? v : null;
+  return _target.hasMatch(v) ? v : null;
+}
+
+class MediaPack {
+  const MediaPack({required this.id, required this.name, this.builtin = false});
+  final String id;
+  final String name;
+  final bool builtin;
+}
 
 /// Parsed manifest: icons by target (newest `updated_at` wins), videos sorted by `position`.
 class ParsedManifest {
-  const ParsedManifest({this.revision = 0, this.icons = const {}, this.videos = const []});
+  const ParsedManifest({this.revision = 0, this.icons = const {}, this.videos = const [], this.activePack, this.packs = const []});
   final int revision;
+  final String? activePack;
+  final List<MediaPack> packs;
   final Map<String, ManifestIcon> icons;
   final List<ManifestVideo> videos;
   static const empty = ParsedManifest();
@@ -72,11 +98,24 @@ class ParsedManifest {
 /// Tolerant: anything malformed is skipped; a non-map → null (keep the last good one).
 ParsedManifest? parseMediaManifest(Object? raw) {
   if (raw is! Map) return null;
+  final ap = raw['active_pack'];
+  final active = ap is String && ap.trim().isNotEmpty ? ap.trim() : null;
+  final packs = <MediaPack>[
+    for (final p in raw['packs'] is List ? raw['packs'] as List : const [])
+      if (p is Map && p['id'] is String && (p['id'] as String).isNotEmpty) MediaPack(id: p['id'] as String, name: '${p['name'] ?? p['id']}', builtin: p['builtin'] == true),
+  ];
+  // The server already filters to the active pack; this is a second guard. No `pack` on an
+  // item (older manifests) or no `active_pack` = always used.
+  bool inPack(Map e) {
+    final p = e['pack'];
+    return active == null || p is! String || p.isEmpty || p == active;
+  }
+
   final icons = <String, ManifestIcon>{};
   for (final e in raw['icons'] is List ? raw['icons'] as List : const []) {
-    if (e is! Map || e['active'] == false) continue;
-    final t = e['target'];
-    if (t is! String || !_target.hasMatch(t)) continue; // '' = library only (ignored)
+    if (e is! Map || e['active'] == false || !inPack(e)) continue;
+    final t = parseMediaTarget(e['target']);
+    if (t == null) continue; // '' = library only (ignored)
     final mime = '${e['mime'] ?? ''}';
     final url = _https(e['url'], exts: const {'png', 'webp', 'jpg', 'jpeg'});
     if (url == null || (mime.isNotEmpty && !const {'image/png', 'image/webp', 'image/jpeg'}.contains(mime))) continue;
@@ -86,24 +125,25 @@ ParsedManifest? parseMediaManifest(Object? raw) {
   }
   final videos = <ManifestVideo>[];
   for (final e in raw['videos'] is List ? raw['videos'] as List : const []) {
-    if (e is! Map || e['active'] == false) continue;
+    if (e is! Map || e['active'] == false || !inPack(e)) continue;
     final placement = '${e['placement'] ?? ''}';
     final url = _https(e['url']);
     if (url == null || !kMediaPlacements.contains(placement)) continue;
-    final t = e['target'];
+    final t = parseMediaTarget(e['target']);
+    final tile = placement == 'folder' || placement == 'icon';
     videos.add(ManifestVideo(
       url: url,
       provider: '${e['provider'] ?? 'direct'}',
       placement: placement,
-      target: t is String && _target.hasMatch(t) ? t : null,
+      target: t,
       posterUrl: _https(e['poster_url'], exts: const {'png', 'webp', 'jpg', 'jpeg'}),
-      loop: e['loop'] == true,
+      loop: tile ? e['loop'] != false : e['loop'] == true,
       position: e['position'] is num ? (e['position'] as num).toInt() : 0,
     ));
   }
   videos.sort((a, b) => a.position.compareTo(b.position));
   final rev = raw['revision'];
-  return ParsedManifest(revision: rev is num ? rev.toInt() : 0, icons: icons, videos: videos);
+  return ParsedManifest(revision: rev is num ? rev.toInt() : 0, icons: icons, videos: videos, activePack: active, packs: packs);
 }
 
 class MediaManifest extends ChangeNotifier {
@@ -142,6 +182,27 @@ class MediaManifest extends ChangeNotifier {
       if (v.placement == placement && v.target == target && v.playable) return v;
     }
     return null;
+  }
+
+  /// Tile video (`folder` / `icon` placement) for exactly [target].
+  ManifestVideo? _tileVideo(String target) {
+    for (final v in current.videos) {
+      if ((v.placement == 'folder' || v.placement == 'icon') && v.target == target && v.playable) return v;
+    }
+    return null;
+  }
+
+  /// Folder logo resolution (contract): `folder:<path>` wins, else `key:<that folder's icon
+  /// key>`, else null (= the bundled vector). Video before image for the same target; the image
+  /// of the same target is the video's poster when the server sends no `poster_url`.
+  ({String? image, ManifestVideo? video, String? poster}) logoFor({String? folderPath, String? iconKey}) {
+    for (final t in [if (folderPath != null && folderPath.isNotEmpty) 'folder:$folderPath', if (iconKey != null && iconKey.isNotEmpty) 'key:$iconKey']) {
+      final v = _tileVideo(t);
+      final img = iconFor(t);
+      if (v != null) return (image: img, video: v, poster: v.posterUrl ?? img);
+      if (img != null) return (image: img, video: null, poster: null);
+    }
+    return (image: null, video: null, poster: null);
   }
 
   /// Fetches with If-None-Match (at most every 5 minutes). Never throws.

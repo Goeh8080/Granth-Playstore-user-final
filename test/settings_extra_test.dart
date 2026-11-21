@@ -98,7 +98,7 @@ void main() {
     t.platformDispatcher.textScaleFactorTestValue = 1.3;
     addTearDown(t.platformDispatcher.clearTextScaleFactorTestValue);
     await settle(t, 3);
-    expect(scaleAt(t, find.text('Granths').first), closeTo(13, 0.001));
+    expect(scaleAt(t, find.text('ग्रंथ').first), closeTo(13, 0.001));
     expect(t.takeException(), isNull);
   });
 

@@ -50,7 +50,7 @@ void main() {
     await pumpApp(tester);
     await tester.tap(find.text('पवित्र ग्रन्थ'));
     await settle(tester);
-    expect(find.text('Granths'), findsOneWidget);
+    expect(find.text('ग्रंथ'), findsOneWidget);
     // Round 10: religion → group → granth (the sample's id 11 sits in पुराण by id).
     await tester.tap(find.text('हिन्दू'));
     await settle(tester);

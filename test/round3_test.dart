@@ -469,7 +469,7 @@ void main() {
       AppNav.I.go('#/granths');
       await tester.pumpWidget(const GranthApp(splash: false, links: false));
       await frames(tester, 12);
-      final title = find.text('Granths').first;
+      final title = find.text('ग्रंथ').first;
       final h = tester.getSize(title).height;
       expect(h, lessThan(28 * scale * 1.1 * 1.5), reason: 'one line');
       // t421: the pill sits in the title row, as on Topics (same header as the other tabs)

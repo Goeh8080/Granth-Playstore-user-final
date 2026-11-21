@@ -58,7 +58,7 @@ void main() {
       });
     }
     expect(find.byKey(AnimatedSplash.overlayKey), findsNothing);
-    expect(find.text('Granths'), findsOneWidget);
+    expect(find.text('ग्रंथ'), findsOneWidget);
     await t.pumpWidget(const SizedBox());
     await t.pump(const Duration(seconds: 4));
   });

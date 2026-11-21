@@ -25,10 +25,10 @@ void main() {
     expect(a.apkUrl, isNull, reason: 'non-https APK links are dropped');
     expect(a.playUrl, 'https://play.google.com/x');
     expect(a.force, isFalse, reason: 'force only when exactly true');
-    final b = parseAppUpdate({'latest_version': '1.0.0', 'latest_build': 2, 'apk_url': 'https://x.dev/a.apk', 'force': true})!;
+    final b = parseAppUpdate({'latest_version': '1.0.1', 'latest_build': 3, 'apk_url': 'https://x.dev/a.apk', 'force': true})!;
     expect(b.isNewer, isTrue, reason: 'same name, higher build');
     expect(b.message, isNotEmpty);
-    expect(parseAppUpdate({'latest_version': '1.0.0'})!.isNewer, isFalse);
+    expect(parseAppUpdate({'latest_version': '1.0.1'})!.isNewer, isFalse);
     expect(parseAppUpdate({'latest_version': '0.9.9', 'latest_build': 5})!.isNewer, isFalse);
   });
 
@@ -42,7 +42,7 @@ void main() {
     expect(parseNavigatorEnabled({'navigator_enabled': false, 'navigatorEnabled': true}, null), isFalse);
     expect(parseNavigatorEnabled(null, {'navigator_enabled': true}), isTrue, reason: 'legacy flags location');
     expect(parseNavigatorEnabled({}, {}), isFalse);
-    final u = parseAppUpdate({'latestVersion': '1.0.1', 'message': 'm', 'playUrl': 'https://play.google.com/store/apps/details?id=com.granth.app.user', 'apkUrl': 'https://granth-admin.vedpuran8090.workers.dev/apk/abc.apk', 'force': false})!;
+    final u = parseAppUpdate({'latestVersion': '1.0.2', 'message': 'm', 'playUrl': 'https://play.google.com/store/apps/details?id=com.granth.app.user', 'apkUrl': 'https://granth-admin.vedpuran8090.workers.dev/apk/abc.apk', 'force': false})!;
     expect(u.apkUrl, endsWith('/apk/abc.apk'));
     expect(u.isNewer, isTrue);
   });

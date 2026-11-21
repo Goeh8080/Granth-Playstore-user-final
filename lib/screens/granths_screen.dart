@@ -18,9 +18,10 @@ import '../state/ui_prefs.dart';
 import '../theme/colors.dart';
 import '../widgets/common.dart';
 import '../widgets/granth_view_setting.dart';
-import '../widgets/granths_hero.dart';
 import '../widgets/live_panel.dart';
 import '../widgets/granth_image.dart';
+import '../widgets/remote_media.dart';
+import '../services/remote_config.dart';
 import '../widgets/overlays.dart';
 import '../widgets/panel.dart';
 import '../widgets/pop.dart';
@@ -92,46 +93,23 @@ class _GranthsPanelState extends State<GranthsPanel> with LivePanel {
     final gridPage = idleOn ? 'shelves' : 'granths';
     final cols = idleOn ? UiPrefs.I.shelfCols : UiPrefs.I.granthCols;
     final dx = panelDx();
-    final hero = scope == null && widget.leading == null;
+    // t421 (Goutam: "granth tab pehle jesa"): the root uses the old header (PageHeader + tools)
+    // again; the temple/serif "mahal" hero is gone. The root keeps the view filter button.
+    final root = scope == null && widget.leading == null;
     void multiPdf() => showPop<void>(context, (ctx) => _MultiGranthSheet(granths: rows.isEmpty ? pool : rows));
     final search = SearchField(
-      placeholder: hero ? 'ग्रंथ का नाम — gita...' : 'ग्रंथ का नाम — gita, kabir',
+      placeholder: 'ग्रंथ का नाम — gita, kabir',
       initial: _q,
-      rounded: hero,
-      onFilter: hero ? () => showGranthViewSheet(context) : null,
+      onFilter: root ? () => showGranthViewSheet(context) : null,
       onChanged: (v) { Places.setQuery(widget.placeKey, v); setState(() => _q = v); },
     );
-    final grid = GridSwitch(locked: UiPrefs.I.gridLocked(gridPage), options: const [1, 2, 3], value: cols, wide: hero, onChanged: (v) => UiPrefs.I.setCols(Store.kGranthCols, v));
-    if (hero) {
-      // v2 (ref1–3 placement): the header row (logo · title · temple · PDF pill), then the
-      // 1×1/2×2/3×3 pill and the rounded search bar, pinned while the folders/cards scroll.
-      // 1×1 stacks them (ref1: full-width pill, search under it); 2×2/3×3 put them side by
-      // side (ref3: pill left, search right). Tablets always side by side.
-      return SliverMainAxisGroup(slivers: [
-        SliverToBoxAdapter(
-          child: Entry(
-            index: 0,
-            dx: dx,
-            child: GranthsHero(title: widget.title, subtitle: widget.subtitle, onPdf: multiPdf),
-          ),
-        ),
-        StickyHeader(
-          child: LayoutBuilder(builder: (context, c) {
-            final w = c.maxWidth.isFinite ? c.maxWidth : 400.0;
-            final side = w >= 640 || cols > 1;
-            return side
-                ? Row(key: const ValueKey('granth-tools-row'), children: [
-                    SizedBox(width: w >= 640 ? 300 : (w * 0.38).clamp(124.0, 170.0), child: grid),
-                    const SizedBox(width: 10),
-                    Expanded(child: search),
-                  ])
-                : Column(key: const ValueKey('granth-tools-stack'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [grid, const SizedBox(height: 8), search]);
-          }),
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 6)),
-        ..._body(idleOn, dx, rows, cols, pool),
-      ]);
-    }
+    final grid = GridSwitch(locked: UiPrefs.I.gridLocked(gridPage), options: const [1, 2, 3], value: cols, onChanged: (v) => UiPrefs.I.setCols(Store.kGranthCols, v));
+    // Optional admin brand loop (`ui.brand_video_url`) in place of the header icon.
+    final brand = root ? RemoteConfig.I.uiBrandVideoUrl : null;
+    final leading = widget.leading ??
+        (brand == null
+            ? null
+            : RemoteIcon(videoUrl: brand, size: 44, fallback: IconBox(tone: Tone.maroon, icon: 'library', size: 44, radius: 11, iconSize: 22)));
     return SliverMainAxisGroup(slivers: [
       StickyHeader(
         child: Entry(
@@ -142,9 +120,10 @@ class _GranthsPanelState extends State<GranthsPanel> with LivePanel {
             icon: 'library',
             title: widget.title,
             subtitle: widget.subtitle,
-            leading: widget.leading,
+            leading: leading,
             trailingLow: true,
             trailing: Pressable(
+              key: const ValueKey('multi-pdf-pill'),
               onTap: multiPdf,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

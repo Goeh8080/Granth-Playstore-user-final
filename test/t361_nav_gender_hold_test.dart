@@ -10,6 +10,7 @@ import 'package:granthprabandhan/services/remote_config.dart';
 import 'package:granthprabandhan/services/storage.dart';
 import 'package:granthprabandhan/state/router.dart';
 import 'package:granthprabandhan/widgets/common.dart';
+import 'package:granthprabandhan/state/toast.dart';
 import 'helpers.dart';
 
 class _Speech implements NavSpeech {
@@ -52,27 +53,43 @@ void main() {
   group('NavPhrases.forGender', () {
     test('female: feminine verbs in every gendered line', () {
       final f = NavPhrases.forGender('female');
-      expect(f.opening('वेद'), 'वेद खोल रही हूँ');
-      expect(f.opening('ग्रंथ (फ़ोल्डर)'), 'ग्रंथ खोल रही हूँ');
-      expect(f.unknown, 'समझ नहीं पाई');
-      expect(f.unknownToast(' pizza '), 'समझ नहीं पाई: pizza');
-      expect(f.searching, 'ढूँढ रही हूँ');
-      expect(f.listening, 'सुन रही हूँ…');
-      expect(f.preview, 'नमस्ते, मैं इस आवाज़ में बोलूँगी');
+      // t421: spoken lines are the Worker's exact cached phrases; names only on screen.
+      expect(f.opening('वेद'), 'यह ग्रंथ खोलती हूँ');
+      expect(f.openingToast('वेद'), 'वेद खोल रही हूँ');
+      expect(f.openingToast('ग्रंथ (फ़ोल्डर)'), 'ग्रंथ खोल रही हूँ');
+      expect(f.unknown, 'माफ़ कीजिए, मैं समझ नहीं पाई');
+      expect(f.unknownToast(' pizza '), 'माफ़ कीजिए, मैं समझ नहीं पाई: pizza');
+      expect(f.searching, 'मैं ढूँढ रही हूँ');
+      expect(f.listening, 'जी, सुन रही हूँ');
+      expect(f.preview, 'नमस्ते, मैं तत्व AI हूँ');
+      expect(f.again, 'कृपया फिर से कहिए');
+      expect(f.clarify(['वेद', 'पुराण']), 'कौन सा ग्रंथ खोलूँ?');
     });
 
     test('male: masculine verbs in every gendered line', () {
       final m = NavPhrases.forGender('male');
-      expect(m.opening('वेद'), 'वेद खोल रहा हूँ');
-      expect(m.unknown, 'समझ नहीं पाया');
-      expect(m.unknownToast('x'), 'समझ नहीं पाया: x');
-      expect(m.searching, 'ढूँढ रहा हूँ');
-      expect(m.listening, 'सुन रहा हूँ…');
-      expect(m.preview, 'नमस्ते, मैं इस आवाज़ में बोलूँगा');
+      expect(m.opening('वेद'), 'यह ग्रंथ खोलता हूँ');
+      expect(m.openingToast('वेद'), 'वेद खोल रहा हूँ');
+      expect(m.unknown, 'माफ़ कीजिए, मैं समझ नहीं पाया');
+      expect(m.unknownToast('x'), 'माफ़ कीजिए, मैं समझ नहीं पाया: x');
+      expect(m.searching, 'मैं ढूँढ रहा हूँ');
+      expect(m.listening, 'जी, सुन रहा हूँ');
+      expect(m.preview, 'नमस्ते, मैं तत्व AI हूँ');
+    });
+
+    test('t421: every spoken line is an exact cached Worker phrase (both genders)', () {
+      for (final p in [NavPhrases.female, NavPhrases.male]) {
+        for (final l in p.spoken()) {
+          expect(navPhraseCached(l), isTrue, reason: l);
+        }
+      }
+      expect(kNavCachedPhrases.length, 22);
+      expect(navPhraseCached('कुछ सुनाई नहीं दिया'), isFalse);
+      expect(navPhraseCached('वेद खोल रही हूँ'), isFalse);
     });
 
     test('no line of one gender leaks the other gender\'s forms', () {
-      final fem = RegExp(r'रही|पाई|बोलूँगी'), masc = RegExp(r'रहा\b|रहा |पाया|बोलूँगा');
+      final fem = RegExp(r'रही|पाई|खोलती|बोलूँगी'), masc = RegExp(r'रहा\b|रहा |पाया|खोलता|बोलूँगा');
       for (final l in NavPhrases.female.all()) {
         expect(masc.hasMatch(l), isFalse, reason: 'female: $l');
       }
@@ -96,9 +113,9 @@ void main() {
       expect(kNavDefaultVoices.first.name, 'Vani');
       await Store.I.setString(kNavVoicesCacheKey, '{"voices":[{"id":"tatv_hi_f_vani","name":"Vani","gender":"female"},{"id":"tatv_hi_m_arjun","name":"Arjun","gender":"male"}],"default_voice_id":"tatv_hi_f_vani"}');
       await Store.I.setString(kNavVoiceKey, 'tatv_hi_m_arjun');
-      expect(NavPhrases.current().opening('वेद'), 'वेद खोल रहा हूँ');
+      expect(NavPhrases.current().opening('वेद'), 'यह ग्रंथ खोलता हूँ');
       await Store.I.setString(kNavVoiceKey, 'tatv_hi_f_vani');
-      expect(NavPhrases.current().unknown, 'समझ नहीं पाई');
+      expect(NavPhrases.current().unknown, 'माफ़ कीजिए, मैं समझ नहीं पाई');
       await Store.I.setString(kNavVoiceKey, kPhoneVoice);
       expect(NavPhrases.current().gender, NavGender.female);
       await Store.I.setString(kNavVoiceKey, kNavLegacyMonika);
@@ -106,9 +123,9 @@ void main() {
       // A voice only on the server list still sets gender once GET /tts/voices is cached.
       await Store.I.setString(kNavVoicesCacheKey, '{"voices":[{"id":"m5qndnI7u4OAdXhH0Mr5","name":"Krishna","gender":"male"},{"id":"OZ0L6eISlOejga3XjDFt","name":"Talia","gender":"female"}],"default_voice_id":"OZ0L6eISlOejga3XjDFt"}');
       await Store.I.setString(kNavVoiceKey, 'm5qndnI7u4OAdXhH0Mr5');
-      expect(NavPhrases.current().unknown, 'समझ नहीं पाया');
+      expect(NavPhrases.current().unknown, 'माफ़ कीजिए, मैं समझ नहीं पाया');
       await Store.I.setString(kNavVoiceKey, 'OZ0L6eISlOejga3XjDFt');
-      expect(NavPhrases.current().unknown, 'समझ नहीं पाई');
+      expect(NavPhrases.current().unknown, 'माफ़ कीजिए, मैं समझ नहीं पाई');
     });
 
     test('runtime speech + toast follow the voice', () async {
@@ -119,15 +136,17 @@ void main() {
         ..speaker = sp;
       await Store.I.setString(kNavVoicesCacheKey, '{"voices":[{"id":"tatv_hi_f_vani","name":"Vani","gender":"female"},{"id":"tatv_hi_m_arjun","name":"Arjun","gender":"male"}]}');
       await VoiceNavigator.I.handle('pizza order karo');
-      expect(sp.said.last, 'समझ नहीं पाई');
+      expect(sp.said.last, 'माफ़ कीजिए, मैं समझ नहीं पाई');
       await Store.I.setString(kNavVoiceKey, 'tatv_hi_m_arjun');
       await VoiceNavigator.I.handle('pizza order karo');
-      expect(sp.said.last, 'समझ नहीं पाया');
+      expect(sp.said.last, 'माफ़ कीजिए, मैं समझ नहीं पाया');
       await VoiceNavigator.I.handle('settings kholo');
-      expect(sp.said.last, 'सेटिंग खोल रहा हूँ');
+      expect(sp.said.last, 'यह ग्रंथ खोलता हूँ');
+      expect(Toast.message.value, 'सेटिंग खोल रहा हूँ', reason: 'the name is on screen, not spoken');
       await Store.I.setString(kNavVoiceKey, 'tatv_hi_f_vani');
       await VoiceNavigator.I.handle('gallery kholo');
-      expect(sp.said.last, 'गैलरी खोल रही हूँ');
+      expect(sp.said.last, 'यह ग्रंथ खोलती हूँ');
+      expect(Toast.message.value, 'गैलरी खोल रही हूँ');
       AppNav.I.go('#/dashboard');
     });
   });
@@ -176,7 +195,7 @@ void main() {
       expect(VoiceNavigator.I.state, NavVoiceState.listening);
       expect(VoiceNavigator.I.listenSource, 'hold');
       expect(find.byKey(const ValueKey('nav-hold-listening')), findsOneWidget);
-      expect(find.text('सुन रही हूँ…'), findsOneWidget);
+      expect(find.text('जी, सुन रही हूँ'), findsOneWidget);
       expect(AppNav.I.route.panel, isNot(Panel.ai));
       VoiceNavigator.I.setOptIn(false);
       await tester.pump(const Duration(milliseconds: 100));
@@ -194,7 +213,7 @@ void main() {
       expect(speech.listens + speech.inits + asked, 0);
       expect(find.byKey(const ValueKey('nav-hold-listening')), findsNothing);
       // No hold gesture is registered at all, so the button acts exactly as before t361.
-      expect(tester.widget<GestureDetector>(find.byKey(const ValueKey('nav-hold-fab'))).onLongPress, isNull);
+      expect(tester.widget<RawGestureDetector>(find.byKey(const ValueKey('nav-hold-fab'))).gestures, isEmpty);
       AppNav.I.go('#/dashboard');
       await tester.tap(find.byKey(const ValueKey('ask-ai-fab')));
       await tester.pump(const Duration(milliseconds: 300));

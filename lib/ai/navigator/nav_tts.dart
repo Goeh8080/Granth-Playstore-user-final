@@ -24,6 +24,7 @@ import '../../services/analytics.dart';
 import '../../services/firebase_bridge.dart';
 import '../../services/remote_config.dart';
 import '../../services/storage.dart';
+import 'nav_phrases.dart' show navPhraseCached;
 
 /// Worker routes for speech (relative to the TTS base). Overridable per client.
 const String kTtsPath = '/tts';
@@ -32,7 +33,7 @@ const String kTtsVoicesPath = '/tts/voices';
 /// Worker cap (w13 contract: 300 Unicode chars).
 const int kTtsTextMax = 300;
 const int kTtsAudioMax = 1024 * 1024;
-const String kTtsUserAgent = 'GranthPrabandhan/1.0.0 (Android; Flutter)';
+const String kTtsUserAgent = 'GranthPrabandhan/1.0.1 (Android; Flutter)';
 
 /// One HTTP reply — the transport seam tests replace.
 typedef TtsReply = ({int status, String contentType, Uint8List body, Duration? retryAfter});
@@ -380,6 +381,9 @@ class NavSpeaker {
     _speaking = true;
     try {
       if (!_enabled()) return _silent(my); // no Vani on the Worker yet: text only
+      // t421: a cached-phrases-only voice (dynamic:false) has audio ONLY for the exact cached
+      // lines: any other text is never POSTed to /tts — the caller shows it as text.
+      if (voice != null && _cachedOnly(voice) && !navPhraseCached(t)) return _silent(my);
       var v = voice;
       var key = '$lang|${v ?? ''}|$t';
       var clip = _cache[key] ?? await _disk(key);
@@ -507,6 +511,7 @@ class NavSpeaker {
       if (t.isEmpty) continue;
       if (_offUntil != null && _now().isBefore(_offUntil!)) return;
       final v = _voice();
+      if (v != null && v != kPhoneVoice && _cachedOnly(v) && !navPhraseCached(t)) continue; // t421: cached lines only
       final key = '$lang|${v == kPhoneVoice ? '' : v ?? ''}|$t';
       if (_cache[key] != null || await _disk(key) != null) continue;
       final clip = await client.synth(t, lang: lang, voiceId: v == kPhoneVoice ? null : v);

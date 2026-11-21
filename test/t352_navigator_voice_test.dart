@@ -185,9 +185,10 @@ void main() {
 
     test('GET /tts/voices → list + default; saved for the picker; bundled list offline', () async {
       await Store.I.setString(kNavVoicesCacheKey, '');
-      expect(navServerVoices().map((v) => v.name), ['Vani', 'Swara'], reason: 'bundled fallback');
+      expect(navServerVoices().map((v) => v.name), ['Vani', 'Swara', 'Arjun'], reason: 'bundled fallback (t421: + Arjun, male)');
       expect(kNavDefaultVoices.first.id, 'tatv_hi_f_vani');
-      expect(kNavDefaultVoices.every((v) => v.gender == 'female' && !v.dynamic), isTrue);
+      expect(kNavDefaultVoices.every((v) => !v.dynamic), isTrue);
+      expect(kNavDefaultVoices.where((v) => v.gender == 'male').map((v) => v.id), [kNavMaleVoice]);
       expect(navVoiceOn(), isFalse, reason: 'no server answer yet: text only');
       final w = _Worker();
       expect(await refreshNavVoices(w.client()), isTrue);
@@ -248,7 +249,7 @@ void main() {
       final c = TtsClient(endpoint: 'https://w.example', iid: () => null, uid: () => null, transport: (m, u, h, b, t) async {
         n++;
         final j = jsonDecode(utf8.decode(b!)) as Map;
-        return j['text'] == 'फिर से बोलिए'
+        return j['text'] == 'कृपया फिर से कहिए'
             ? (status: 200, contentType: 'audio/mpeg', body: _mp3, retryAfter: null)
             : (status: 503, contentType: 'application/json', body: Uint8List.fromList(utf8.encode('{"error":"tts_unavailable"}')), retryAfter: null);
       });
@@ -256,9 +257,9 @@ void main() {
       final sp = NavSpeaker(client: c, audio: a, voice: () => 'tatv_hi_f_vani', cachedOnly: (_) => true);
       expect(await sp.say('कोई नई बात'), isFalse);
       expect(sp.lastSilent, isTrue);
-      expect(await sp.say('फिर से बोलिए'), isTrue, reason: 'no global back-off');
+      expect(await sp.say('कृपया फिर से कहिए'), isTrue, reason: 'no global back-off');
       expect(await sp.say('कोई नई बात'), isFalse);
-      expect(n, 2, reason: 'a text with no audio is not asked again');
+      expect(n, 1, reason: 't421: a text that is not a cached phrase is never POSTed');
     });
 
     test('Vani not listed by the server → text only, no /tts call', () async {
@@ -540,13 +541,14 @@ void main() {
       AppNav.I.go('#/dashboard');
     });
 
-    test('"Hey Granth ved khol" → folders step by step + says "वेद खोल रही हूँ" (mic off)', () async {
+    test('"Hey Granth ved khol" → folders step by step + says the cached "यह ग्रंथ खोलती हूँ" (mic off)', () async {
       sp.listening = true;
       final r = await VoiceNavigator.I.handle('Hey Granth ved khol');
       expect(r, isA<NavIntent>());
       expect(seen.toSet().toList(), ['#/granths', '#/granths?r=hindu', '#/granths?r=hindu&g=ved']);
-      expect(VoiceNavigator.I.speaker.said, ['वेद खोल रही हूँ']);
-      expect(w.posts.single.body!['text'], 'वेद खोल रही हूँ');
+      expect(VoiceNavigator.I.speaker.said, ['यह ग्रंथ खोलती हूँ']);
+      expect(w.posts.single.body!['text'], 'यह ग्रंथ खोलती हूँ');
+      expect(Toast.message.value, 'वेद खोल रही हूँ', reason: 'the folder name is shown, not spoken');
       expect(audio.plays, [400]);
       expect(audio.micOnWhilePlaying, isFalse);
       expect(VoiceNavigator.I.speaking, isFalse);
@@ -556,7 +558,7 @@ void main() {
       await Store.I.setString(kNavVoiceKey, 'tatv_hi_m_arjun');
       await VoiceNavigator.I.handle('settings kholo');
       expect(w.posts.single.body!['voice_id'], 'tatv_hi_m_arjun');
-      expect(w.posts.single.body!['text'], 'सेटिंग खोल रहा हूँ');
+      expect(w.posts.single.body!['text'], 'यह ग्रंथ खोलता हूँ');
     });
 
     test('server 503 → navigation still works; no voice, the reply is shown as text', () async {
@@ -565,10 +567,10 @@ void main() {
       expect(seen.last, '#/gallery');
       expect(audio.plays, isEmpty);
       expect(audio.local, isEmpty);
-      expect(Toast.message.value, VoiceNavigator.I.speaker.said.last);
+      expect(Toast.message.value, endsWith('खोल रही हूँ'), reason: 'the reply is always on screen');
     });
 
-    test('unknown → says "समझ नहीं पाई" (default voice Vani is female)', () async {
+    test('unknown → says "माफ़ कीजिए, मैं समझ नहीं पाई" (default voice Vani is female)', () async {
       await VoiceNavigator.I.handle('pizza order karo');
       expect(VoiceNavigator.I.speaker.said, [NavPhrases.female.unknown]);
     });
@@ -581,7 +583,7 @@ void main() {
       expect(seen, isEmpty);
     });
 
-    test('mic: error_no_match → "फिर से बोलिए" + listen again, at most $kNavRetries times', () async {
+    test('mic: error_no_match → "कृपया फिर से कहिए" + listen again, at most $kNavRetries times', () async {
       await VoiceNavigator.I.listenOnce();
       expect(sp.listens, 1);
       expect(sp.commands.single, isTrue, reason: 'command window');
@@ -589,7 +591,7 @@ void main() {
       await _until(() => sp.listens == 2); // the spoken retry reads the phrase disk cache (real I/O)
       expect(sp.listens, 2);
       expect(VoiceNavigator.I.speaker.said, [NavPhrases.female.again]);
-      expect(Toast.message.value, 'फिर से बोलिए');
+      expect(Toast.message.value, 'कृपया फिर से कहिए');
       sp.onDone!('error_network');
       await _until(() => sp.listens == 3);
       expect(sp.listens, 3);
@@ -616,7 +618,8 @@ void main() {
       // Force a pending clarification, then say something unrelated.
       final r1 = await v.handle('x', result: NavClarify([v.catalog().targets.firstWhere((t) => t.id == 'g:hindu/ved'), v.catalog().targets.firstWhere((t) => t.id == 'g:hindu/puran')]));
       expect(r1, isA<NavClarify>());
-      expect(v.speaker.said.last, startsWith('कौन-सा खोलूँ? वेद या पुराण'));
+      expect(v.speaker.said.last, 'कौन सा ग्रंथ खोलूँ?');
+      expect(Toast.message.value, 'कौन सा ग्रंथ खोलूँ? वेद / पुराण');
       final r2 = v.interpretHeard(['settings kholo']);
       expect((r2 as NavIntent).target.id, 'page:settings');
       final r3 = v.interpretHeard(['ved']);
@@ -676,11 +679,11 @@ void main() {
       final dir = Directory.systemTemp.createTempSync('navtts');
       final a = _Audio();
       final s1 = NavSpeaker(client: w.client(), audio: a, voice: () => null)..diskDir = () => dir;
-      await s1.prefetch(['फिर से बोलिए']);
+      await s1.prefetch(['कृपया फिर से कहिए']);
       expect(w.posts.length, 1);
       await Future<void>.delayed(const Duration(milliseconds: 50));
       final s2 = NavSpeaker(client: w.client(), audio: a, voice: () => null)..diskDir = () => dir;
-      expect(await s2.say('फिर से बोलिए'), isTrue);
+      expect(await s2.say('कृपया फिर से कहिए'), isTrue);
       expect(w.posts.length, 1);
       expect(a.plays.length, 1);
     });

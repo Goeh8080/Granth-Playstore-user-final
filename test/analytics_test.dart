@@ -92,8 +92,8 @@ void main() {
     expect(b['v'], 1);
     expect(b['batch_id'], matches(RegExp(r'^[0-9A-Za-z_-]{8,64}$')));
     expect(b['iid'], matches(RegExp(r'^[0-9a-f]{32}$')));
-    expect(b['app'], '1.0.0+1');
-    expect(b['app_version'], '1.0.0');
+    expect(b['app'], '1.0.1+2');
+    expect(b['app_version'], '1.0.1');
     expect(b['app_version'], matches(RegExp(r'^[0-9A-Za-z.+_-]{1,24}$')));
     expect(b['build'], 1);
     expect(b['app'], matches(RegExp(r'^[0-9A-Za-z.+_-]{1,24}$')));

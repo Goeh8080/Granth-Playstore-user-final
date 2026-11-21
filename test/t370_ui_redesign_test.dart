@@ -15,7 +15,8 @@ import 'package:granthprabandhan/services/remote_config.dart';
 import 'package:granthprabandhan/services/storage.dart';
 import 'package:granthprabandhan/state/router.dart';
 import 'package:granthprabandhan/state/ui_prefs.dart';
-import 'package:granthprabandhan/widgets/granths_hero.dart';
+import 'package:granthprabandhan/widgets/panel.dart' show PageHeader;
+import 'package:granthprabandhan/widgets/granth_view_setting.dart' show GranthViewVideo;
 import 'package:granthprabandhan/widgets/icon_v3_style.dart';
 import 'package:granthprabandhan/widgets/religion_symbol.dart';
 
@@ -59,10 +60,11 @@ void main() {
   }
 
   for (final cols in [1, 2, 3]) {
-    testWidgets('Granth tab $cols×$cols: hero, pill toggle, rounded search, premium religion tiles with real counts', (t) async {
+    testWidgets('Granth tab $cols×$cols: old header (t421, no hero), grid toggle, search + filter, religion tiles with real counts', (t) async {
       UiPrefs.I.setCols(Store.kGranthCols, cols);
       await boot(t, h: cols == 1 ? 1100 : 900);
-      expect(find.byType(GranthsHero), findsOneWidget);
+      // t421: the old PageHeader is back (the temple/serif hero is removed)
+      expect(find.byType(PageHeader), findsWidgets);
       expect(find.text('Granths'), findsOneWidget);
       expect(find.text('Sacred texts and scriptures'), findsOneWidget);
       expect(find.byKey(const ValueKey('multi-pdf-pill')), findsOneWidget);
@@ -70,7 +72,7 @@ void main() {
         expect(find.byKey(ValueKey('grid-$n')), findsOneWidget);
       }
       expect(find.byKey(const ValueKey('search-filter')), findsOneWidget);
-      expect(find.text('ग्रंथ का नाम — gita...'), findsOneWidget);
+      expect(find.text('ग्रंथ का नाम — gita, kabir'), findsOneWidget);
       expect(find.byType(FolderRow), findsWidgets);
       expect(t.widget<FolderRow>(find.byType(FolderRow).first).cols, cols);
       expect(find.byType(IconV3Box), findsWidgets);
@@ -127,7 +129,8 @@ void main() {
     UiPrefs.I.animations = true;
     await boot(t);
     expect(find.byKey(const ValueKey('granth-view-picker')), findsOneWidget);
-    expect(find.byType(GranthViewLivePreview), findsNWidgets(2));
+    expect(find.byType(GranthViewLivePreview), findsNWidgets(2), reason: 'the live miniature is the fallback (no video player in tests)');
+    expect(find.byType(GranthViewVideo), findsNWidgets(2), reason: 't421: each option is a looping video');
     expect(find.descendant(of: find.byKey(const ValueKey('granth-view-picker')), matching: find.byType(Image)), findsNothing, reason: 'live widgets, not pictures');
     expect(find.descendant(of: find.byKey(const ValueKey('granth-view-preview-folders')), matching: find.byType(FolderRow)), findsWidgets);
     expect(find.descendant(of: find.byKey(const ValueKey('granth-view-picker')), matching: find.byType(IconButton)), findsNothing, reason: 'no X');

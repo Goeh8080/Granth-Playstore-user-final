@@ -35,10 +35,18 @@ class ShelfGroup {
     this.subgroups = const [],
     this.visible = true,
     this.comingSoon = '',
+    this.iconUrl,
+    this.iconVideoUrl,
   });
 
   final String id;
   final String title;
+
+  /// t421 (remote config, optional): an admin-uploaded picture (png/webp/jpg/svg, https) and
+  /// a short muted loop (mp4, https) shown instead of the painted [icon]. Null = painted icon.
+  /// See docs/REMOTE_MEDIA.md.
+  final String? iconUrl;
+  final String? iconVideoUrl;
 
   /// Remote config: `false` hides this folder's tile only (never its granths).
   final bool visible;
@@ -67,10 +75,10 @@ class ShelfGroup {
     final g = ShelfGroup._fromJson(j);
     if (!g.hasSubgroups || (g.granthIds.isEmpty && g.keywords.isEmpty) || g.subgroups.any((s) => s.id == kGeneralId)) return g;
     return ShelfGroup(
-      id: g.id, title: g.title, icon: g.icon, tone: g.tone, notKeywords: g.notKeywords, visible: g.visible, comingSoon: g.comingSoon,
+      id: g.id, title: g.title, icon: g.icon, tone: g.tone, notKeywords: g.notKeywords, visible: g.visible, comingSoon: g.comingSoon, iconUrl: g.iconUrl, iconVideoUrl: g.iconVideoUrl,
       subgroups: [
         ...g.subgroups,
-        ShelfGroup(id: kGeneralId, title: 'अन्य ${g.title}', icon: g.icon, tone: g.tone, granthIds: g.granthIds, keywords: g.keywords, notKeywords: g.notKeywords),
+        ShelfGroup(id: kGeneralId, title: 'अन्य ${g.title}', icon: g.icon, tone: g.tone, granthIds: g.granthIds, keywords: g.keywords, notKeywords: g.notKeywords, iconUrl: g.iconUrl, iconVideoUrl: g.iconVideoUrl),
       ],
     );
   }
@@ -86,13 +94,19 @@ class ShelfGroup {
         subgroups: [for (final s in (j['subgroups'] as List? ?? const [])) ShelfGroup.fromJson((s as Map).cast<String, dynamic>())],
         visible: j['visible'] != false,
         comingSoon: j['coming_soon'] is String ? (j['coming_soon'] as String).trim() : '',
+        iconUrl: parseMediaUrl(j['icon_url'], kImageExts),
+        iconVideoUrl: parseMediaUrl(j['icon_video_url'], kVideoExts),
       );
 }
 
 class ShelfReligion {
-  const ShelfReligion({required this.id, required this.title, this.tone = 'maroon', this.icon = 'folder-open', this.groups = const [], this.visible = true, this.comingSoon = ''});
+  const ShelfReligion({required this.id, required this.title, this.tone = 'maroon', this.icon = 'folder-open', this.groups = const [], this.visible = true, this.comingSoon = '', this.iconUrl, this.iconVideoUrl});
   final String id;
   final String title;
+
+  /// t421: see [ShelfGroup.iconUrl] / [ShelfGroup.iconVideoUrl].
+  final String? iconUrl;
+  final String? iconVideoUrl;
 
   /// Remote config: `false` hides the religion's tile only.
   final bool visible;
@@ -111,7 +125,28 @@ class ShelfReligion {
         groups: [for (final g in (j['groups'] as List? ?? const [])) ShelfGroup.fromJson((g as Map).cast<String, dynamic>())],
         visible: j['visible'] != false,
         comingSoon: j['coming_soon'] is String ? (j['coming_soon'] as String).trim() : '',
+        iconUrl: parseMediaUrl(j['icon_url'], kImageExts),
+        iconVideoUrl: parseMediaUrl(j['icon_video_url'], kVideoExts),
       );
+}
+
+/// t421: file types the app shows for admin media (by the URL path's extension).
+const Set<String> kImageExts = {'png', 'webp', 'jpg', 'jpeg', 'svg'};
+const Set<String> kVideoExts = {'mp4'};
+
+/// An admin media URL: `https://…` (≤ 800 chars) whose path ends in one of [exts]
+/// (a query string is fine). Anything else — missing, empty, http, other types — is null, so
+/// an unknown or bad value changes nothing (the painted icon / bundled video stays).
+String? parseMediaUrl(Object? v, Set<String> exts) {
+  if (v is! String) return null;
+  final s = v.trim();
+  if (s.isEmpty || s.length > 800) return null;
+  final u = Uri.tryParse(s);
+  if (u == null || u.scheme != 'https' || u.host.isEmpty) return null;
+  final path = u.path.toLowerCase();
+  final dot = path.lastIndexOf('.');
+  if (dot < 0 || !exts.contains(path.substring(dot + 1))) return null;
+  return s;
 }
 
 List<String> _strings(Object? v) => [for (final e in (v as List? ?? const [])) '$e'];

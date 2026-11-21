@@ -6,7 +6,7 @@ shell around a React WebView (`index.html`). This port draws every screen native
 same layout, colours, fonts (Noto Sans Devanagari, Yatra One, Tiro Devanagari Sanskrit), icons and Hindi text.
 The only intended change is smoother animations.
 
-This build is versioned **1.0.0 (versionCode 1)** for external testing; split APKs report the same versionCode.
+This build is versioned **1.0.1 (versionCode 2)** for external testing; split APKs report the same versionCode.
 
 This repository builds with the Android package / application id **`com.granth.app.user`** (Play rejected `com.granth.app`; Kotlin namespace stays `com.granth.app`). It is a separate app on the device: installs of the old id are not updated by it. Signed with the Satlok key. Deep links are unchanged: `granth://open?...` and `https://granth.grok.me/open?...`.
 
@@ -67,7 +67,7 @@ Requirements: Flutter 3.35+ (Dart ^3.9) and JDK 17. The release build is signed 
 debug key. No signing keys are kept in this repository. Add your own `key.properties` to sign for the Play Store.
 
 GitHub Actions (`.github/workflows/android-apk.yml`) builds the APK on every push and uploads it as the
-`Playstore-1.0.0-arm64.apk` and `Playstore-1.0.0.aab` artifacts (each the bare file, no zip).
+`Playstore-1.0.1-arm64.apk` and `Playstore-1.0.1.aab` artifacts (each the bare file, no zip).
 
 ## App key (analytics `X-App-Key`)
 

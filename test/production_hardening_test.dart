@@ -32,6 +32,6 @@ void main() {
     final m = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
     expect(m, contains('android:usesCleartextTraffic="false"'));
     expect(m, isNot(contains('android:debuggable')));
-    expect(File('pubspec.yaml').readAsStringSync(), contains('version: 1.0.0+1'));
+    expect(File('pubspec.yaml').readAsStringSync(), contains('version: 1.0.1+2'));
   });
 }

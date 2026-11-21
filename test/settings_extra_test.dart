@@ -39,7 +39,7 @@ void main() {
     UiPrefs.I.refresh();
     native = [];
     shared = [];
-    PackageInfo.setMockInitialValues(appName: 'ग्रंथ प्रबंधन', packageName: 'com.granth.app.user', version: '1.0.0', buildNumber: '1', buildSignature: '');
+    PackageInfo.setMockInitialValues(appName: 'ग्रंथ प्रबंधन', packageName: 'com.granth.app.user', version: '1.0.1', buildNumber: '2', buildSignature: '');
     final m = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     m.setMockMethodCallHandler(_native, (c) async {
       native.add(c);
@@ -67,7 +67,7 @@ void main() {
     await t.binding.handlePopRoute();
     await settle(t, 6);
     await openFolder(t, 'about');
-    expect(find.text('Version 1.0.0', skipOffstage: false), findsOneWidget, reason: 'from package info');
+    expect(find.text('Version 1.0.1', skipOffstage: false), findsOneWidget, reason: 'from package info');
   });
 
   testWidgets('अक्षर का आकार: small / large / normal change text app-wide and are saved', (t) async {

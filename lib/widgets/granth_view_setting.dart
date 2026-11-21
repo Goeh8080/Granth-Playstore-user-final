@@ -5,6 +5,7 @@ import '../services/storage.dart';
 import '../theme/colors.dart';
 import 'common.dart';
 import 'overlays.dart';
+import 'remote_media.dart';
 
 /// The user's once-only folders/list choice (t368: kept across logout, changeable in Settings).
 const granthViewKey = Store.kGranthView;
@@ -46,6 +47,94 @@ List<Widget> granthViewPills({VoidCallback? after}) {
               },
       ),
   ];
+}
+
+/// t421: the chooser / Settings loops — lotus for फ़ोल्डर, book for एक सूची (bundled, muted,
+/// ~300 KB each). The admin may replace them (`ui.chooser_video_folders` / `ui.chooser_video_list`).
+const Map<String, String> kGranthViewVideoAsset = {
+  'folders': 'assets/brand/video/lotus_folders.mp4',
+  'list': 'assets/brand/video/book_list.mp4',
+};
+
+String? granthViewVideoUrl(String mode) => mode == 'list' ? RemoteConfig.I.uiChooserVideoList : RemoteConfig.I.uiChooserVideoFolders;
+
+/// The looping video of a view option, with [fallback] (live miniature / icon) while it loads
+/// or if the phone cannot play it.
+class GranthViewVideo extends StatelessWidget {
+  const GranthViewVideo({super.key, required this.mode, required this.fallback, this.radius = 10});
+  final String mode;
+  final Widget fallback;
+  final double radius;
+  @override
+  Widget build(BuildContext context) => ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: ColoredBox(
+          color: GColors.cream,
+          child: LoopVideo(
+            key: ValueKey('granth-view-video-$mode'),
+            asset: kGranthViewVideoAsset[mode == 'list' ? 'list' : 'folders'],
+            url: granthViewVideoUrl(mode),
+            fallback: fallback,
+          ),
+        ),
+      );
+}
+
+/// Settings → ग्रंथ दृश्य (t421: "setting me bhi video chale"): the two options as the same
+/// looping videos as the chooser, each tappable, with its pill under it. Locked (greyed, no tap)
+/// while the admin forces the view.
+Widget granthViewVideoChoices({VoidCallback? after}) {
+  final mode = granthViewMode();
+  final locked = granthViewForced();
+  final pills = granthViewPills(after: after);
+  const ids = ['folders', 'list'];
+  const icons = ['folder-open', 'library'];
+  return SizedBox(
+    key: const ValueKey('set-granth-view-videos'),
+    width: double.infinity,
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      for (var i = 0; i < 2; i++) ...[
+        if (i > 0) const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+            Opacity(
+              opacity: locked ? 0.6 : 1,
+              child: Pressable(
+                key: ValueKey('set-granth-view-video-${ids[i]}'),
+                scale: kGrowScale,
+                glow: BorderRadius.circular(14),
+                onTap: locked
+                    ? null
+                    : () async {
+                        await setGranthView(ids[i]);
+                        after?.call();
+                      },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: mode == ids[i] ? GColors.maroon : GColors.creamDark, width: mode == ids[i] ? 2 : 1),
+                  ),
+                  child: AspectRatio(
+                    aspectRatio: 1.3,
+                    child: GranthViewVideo(
+                      mode: ids[i],
+                      radius: 11,
+                      fallback: Center(child: IconBox(tone: Tone.maroon, icon: icons[i], size: 52, radius: 14, iconSize: 26)),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(alignment: Alignment.center, child: pills[i]),
+          ]),
+        ),
+      ],
+    ]),
+  );
 }
 
 /// Settings heading of the block.

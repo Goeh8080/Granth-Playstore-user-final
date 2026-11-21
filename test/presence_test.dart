@@ -63,7 +63,7 @@ void main() {
     expect(net.paths, ['/presence/heartbeat']);
     expect(net.opts.first.headers['X-App-Key'], 'gak_test');
     expect(net.opts.first.contentType, startsWith('application/json'));
-    expect(net.bodies.first, {'install_id': iid, 'screen': 'home', 'app_version': '1.0.0'});
+    expect(net.bodies.first, {'install_id': iid, 'screen': 'home', 'app_version': '1.0.1'});
     await t.pump(const Duration(seconds: 20));
     await t.pump(const Duration(seconds: 20));
     expect(net.paths.where((x) => x == '/presence/heartbeat').length, 3);
@@ -92,10 +92,10 @@ void main() {
     p = make(key: '');
     uid = 'Abc_123-x';
     screen = 'Reader';
-    expect(p.body(), {'install_id': iid, 'uid': 'Abc_123-x', 'screen': 'reader', 'app_version': '1.0.0'});
+    expect(p.body(), {'install_id': iid, 'uid': 'Abc_123-x', 'screen': 'reader', 'app_version': '1.0.1'});
     uid = 'bad uid!';
     screen = 'a very long screen name that is too long';
-    expect(p.body(), {'install_id': iid, 'app_version': '1.0.0'});
+    expect(p.body(), {'install_id': iid, 'app_version': '1.0.1'});
     p.start();
     await t.pump(const Duration(milliseconds: 10));
     expect(net.opts.first.headers.containsKey('X-App-Key'), isFalse);

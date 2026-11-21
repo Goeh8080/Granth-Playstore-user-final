@@ -31,6 +31,8 @@ dependencies:
   firebase_messaging: ^17.0.1
   speech_to_text: ^7.5.0
   webview_flutter_android: ^4.14.1
+  # t421: muted looping brand / admin folder videos (chooser, Settings, folder icons)
+  video_player: ^2.9.5
 
 dev_dependencies:
   flutter_test:
@@ -47,6 +49,7 @@ flutter:
     - assets/fonts/NotoSansDevanagari-Full.ttf
     - shorebird.yaml
     - assets/brand/
+    - assets/brand/video/
   fonts:
     - family: NotoDeva
       fonts:

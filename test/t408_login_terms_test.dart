@@ -25,7 +25,7 @@ void main() {
     await t.runAsync(loadFonts);
     await t.binding.setSurfaceSize(const Size(411, 891));
     addTearDown(() => t.binding.setSurfaceSize(null));
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('dev.fluttercommunity.plus/package_info'), (c) async => {'appName': 'ग्रंथ प्रबंधन', 'packageName': 'com.granth.app.user', 'version': '1.0.0', 'buildNumber': '1'});
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('dev.fluttercommunity.plus/package_info'), (c) async => {'appName': 'ग्रंथ प्रबंधन', 'packageName': 'com.granth.app.user', 'version': '1.0.1', 'buildNumber': '2'});
     await t.pumpWidget(RepaintBoundary(key: key, child: MaterialApp(debugShowCheckedModeBanner: false, home: page)));
     for (final a in ['assets/brand/app_logo.png', 'assets/brand/app_book.png']) {
       await t.runAsync(() => precacheImage(AssetImage(a), key.currentContext!));
@@ -72,7 +72,7 @@ void main() {
     var accepted = 0, declined = 0;
     await show(t, TermsPage(terms: TermsInfo.fallback, onAccept: () => accepted++, onDecline: () => declined++));
     expect(find.text('नियम और शर्तें'), findsOneWidget);
-    expect(find.text('ऐप संस्करण 1.0.0'), findsOneWidget);
+    expect(find.text('ऐप संस्करण 1.0.1'), findsOneWidget);
     expect(find.byKey(const ValueKey('terms-link')), findsOneWidget);
     expect(find.byKey(const ValueKey('privacy-link')), findsOneWidget);
     await shot(t, 'terms');

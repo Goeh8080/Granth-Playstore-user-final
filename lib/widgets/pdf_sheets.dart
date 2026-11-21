@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../screens/support_chat.dart';
 import '../screens/home_shell.dart' show SyncStrip;
+import '../config.dart' show kAppVersion;
 import '../models/models.dart';
 import '../services/api.dart' show kPlayStoreUrl;
 import '../services/catalog_store.dart';
@@ -713,7 +714,7 @@ class _SettingsState extends State<_Settings> {
   int _taps = 0;
   bool _looks = false;
   bool _themes = false;
-  String _version = '1.0.0';
+  String _version = kAppVersion;
 
   @override
   void initState() {
@@ -801,7 +802,7 @@ class _SettingsState extends State<_Settings> {
                 // t368: the once-only folders/list choice can be changed here (admin override = locked).
                 ValueListenableBuilder<int>(
                   valueListenable: granthViewChanged,
-                  builder: (_, _, _) => KeyedSubtree(key: const ValueKey('set-granth-view'), child: _block(granthViewTitle(), granthViewPills())),
+                  builder: (_, _, _) => KeyedSubtree(key: const ValueKey('set-granth-view'), child: _block(granthViewTitle(), [granthViewVideoChoices()])),
                 ),
                 // ---- Extra settings (not in the web app), same pills and headings ----
                 _block('अक्षर का आकार', [

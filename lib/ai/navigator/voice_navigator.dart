@@ -61,6 +61,10 @@ abstract class NavSpeech {
 
 class _SttSpeech implements NavSpeech {
   final SpeechToText _stt = SpeechToText();
+
+  /// t421: why the last [init] failed: `no_engine` (mic allowed but no recognizer, e.g. no
+  /// Google speech services), `denied` (mic refused), `` (ok / unknown).
+  String failReason = '';
   void Function(String? error)? _done;
   Timer? _doneLater;
   @override
@@ -70,7 +74,8 @@ class _SttSpeech implements NavSpeech {
   Future<bool> init() async {
     try {
       // Asks for the microphone (RECORD_AUDIO) the first time — only after the user opted in.
-      return await _stt.initialize(
+      failReason = '';
+      final ok = await _stt.initialize(
         onStatus: (s) {
           // "done" can arrive just before the error: give the error a moment to win.
           if (s == SpeechToText.doneStatus || s == SpeechToText.notListeningStatus) {
@@ -83,7 +88,16 @@ class _SttSpeech implements NavSpeech {
           _done?.call(e.errorMsg);
         },
       );
+      if (!ok) {
+        var perm = false;
+        try {
+          perm = await _stt.hasPermission;
+        } catch (_) {}
+        failReason = perm ? 'no_engine' : 'denied';
+      }
+      return ok;
     } catch (_) {
+      failReason = 'no_engine';
       return false;
     }
   }
@@ -137,6 +151,10 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
 
   static const kOptIn = 'granth-nav-voice';
   static const kWake = 'granth-nav-wake';
+
+  /// t421: turning the Navigator on also turns the wake phrase on ("wake up nahi ho raha").
+  /// Tests that drive the fake recognizer by hand switch it off (no wake windows in between).
+  static bool wakeOnOptIn = true;
 
   NavSpeech speech = _SttSpeech();
 
@@ -209,7 +227,7 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
           final a = speaker.audio;
           if (a is WebViewNavAudio) await a.warm();
           final p = NavPhrases.current();
-          await speaker.prefetch([p.again, p.unknown, p.nothing]);
+          await speaker.prefetch([p.again, p.unknown, p.opening(''), p.listening]);
         } catch (_) {}
       }();
 
@@ -257,7 +275,9 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
     if (!adminOn) return false;
     _ready = await speech.init();
     await Store.I.setString(kOptIn, _ready ? '1' : '0');
-    if (!_ready) Toast.show(NavPhrases.current().micDenied);
+    // t421: wake-up works out of the box once the user opts in (Settings pill = off switch).
+    if (_ready && wakeOnOptIn) await Store.I.setString(kWake, '1');
+    if (!_ready) Toast.show(_initFailText());
     _sync();
     return _ready;
   }
@@ -270,12 +290,20 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<bool> _ensure() async => _ready || (_ready = await speech.init());
 
+  /// t421: a clear Hindi reason when the recognizer cannot start.
+  String _initFailText() {
+    final s = speech;
+    final p = NavPhrases.current();
+    if (s is _SttSpeech && s.failReason == 'no_engine') return p.noRecognizer;
+    return p.micDenied;
+  }
+
   /// Mic button: listen once for a command (no wake phrase needed). On noise, no match, a
   /// network blip or a low-confidence unknown it says "फिर से बोलिए" and listens again
   /// (up to [kNavRetries] times).
   Future<void> listenOnce({int attempt = 0}) async {
     if (!available || !_foreground || state == NavVoiceState.navigating) return;
-    if (!await _ensure()) return Toast.show(NavPhrases.current().micUnavailable);
+    if (!await _ensure()) return Toast.show(speech is _SttSpeech && (speech as _SttSpeech).failReason == 'no_engine' ? NavPhrases.current().noRecognizer : NavPhrases.current().micUnavailable);
     _restart?.cancel();
     if (_speaking) await _hush(); // tap while it talks: stop the voice, listen
     if (speech.listening) await speech.stop();
@@ -313,7 +341,7 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
           unawaited(_again(attempt, busy: err == 'error_busy'));
         } else {
           retrying = false;
-          if (err != null && !retryable) Toast.show(NavPhrases.current().micFailed);
+          if (err != null && !retryable) Toast.show(err.contains('language') ? NavPhrases.current().noHindi : NavPhrases.current().micFailed);
           if (wakeOn) _scheduleWake(const Duration(seconds: 2));
         }
       },
@@ -339,7 +367,7 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
     final p = NavPhrases.current();
     Toast.show(p.again);
-    await _say(p.again, rearm: false);
+    await _say(p.again, rearm: false, shown: true);
     await Future<void>.delayed(busy ? retryGap * 2 : retryGap);
     if (available && _foreground && state != NavVoiceState.navigating) await listenOnce(attempt: attempt + 1);
   }
@@ -430,13 +458,15 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
           await openVoicePicker();
         }
       case NavIntent(:final target):
-        final voice = _say(NavPhrases.current().opening(target.label));
+        // t421: speak only the cached "यह ग्रंथ खोलती हूँ"; the folder name is on screen.
+        final ph = NavPhrases.current();
+        final voice = _say(ph.opening(target.label), display: ph.openingToast(target.label));
         await run(target);
         await voice;
       case NavClarify(:final choices):
         _pending = [for (final c in choices) c.id];
         _pendingAt = DateTime.now();
-        Toast.show('${r.prompt} ${choices.map((c) => c.label).join(' / ')}');
+        Toast.show(NavPhrases.current().clarifyToast([for (final c in choices) c.label]));
         await _say(NavPhrases.current().clarify([for (final c in choices) c.label]), shown: true);
         // Listen for the answer right away (one-shot); wake mode also accepts it unprefixed.
         if (available && _foreground && !wakeOn && state == NavVoiceState.idle) unawaited(listenOnce());
@@ -444,7 +474,8 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
         final empty = text.trim().isEmpty;
         final p = NavPhrases.current();
         Toast.show(empty ? p.nothing : p.unknownToast(text));
-        await _say(empty ? p.nothing : p.unknown, shown: true);
+        // "कुछ सुनाई नहीं दिया" is not cached: speak "कृपया फिर से कहिए" (text stays on screen).
+        await _say(empty ? p.again : p.unknown, shown: true);
     }
     return r;
   }
@@ -459,15 +490,16 @@ class VoiceNavigator extends ChangeNotifier with WidgetsBindingObserver {
     await showNavVoiceSheet(ctx, speaker: speaker);
   }
 
-  /// Speaks [text] with the mic off; re-arms the wake phrase afterwards. No server voice
-  /// (offline, /tts off …) → the text is shown instead ([shown]: already on screen).
-  Future<void> _say(String text, {bool rearm = true, bool shown = false}) async {
+  /// Speaks [text] with the mic off; re-arms the wake phrase afterwards. t421: the reply is
+  /// ALWAYS visible as a toast ([display], default [text]) unless the caller already showed it
+  /// ([shown]) — spoken or not (no device TTS; uncached text is never sent to /tts).
+  Future<void> _say(String text, {bool rearm = true, bool shown = false, String? display}) async {
     _speaking = true;
     _restart?.cancel();
     try {
+      if (!shown) Toast.show(display ?? text);
       if (speech.listening) await speech.stop();
       await speaker.say(text);
-      if (speaker.lastSilent && !shown) Toast.show(text);
     } catch (_) {
     } finally {
       _speaking = false;
@@ -659,13 +691,18 @@ class NavMicButton extends StatelessWidget {
         listenable: Listenable.merge([VoiceNavigator.I, RemoteConfig.I]),
         builder: (context, _) {
           final v = VoiceNavigator.I;
-          if (!v.available) return const SizedBox.shrink();
+          // t421: shown whenever the admin turned the Navigator on; not opted in yet → a tap
+          // asks kindly first (same sheet as the hold), then listens.
+          if (!v.adminOn) return const SizedBox.shrink();
           final active = v.state == NavVoiceState.listening || v.state == NavVoiceState.navigating;
           return Pressable(
             key: const ValueKey('nav-mic'),
-            onTap: () {
+            onTap: () async {
+              if (!v.optedIn) {
+                if (!await NavHoldTrigger.askOptIn(context) || !await v.setOptIn(true)) return;
+              }
               v.listenSource = 'mic';
-              v.listenOnce();
+              await v.listenOnce();
             },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 220),
@@ -698,10 +735,14 @@ class NavHoldTrigger extends StatelessWidget {
 
   Future<void> _hold(BuildContext context) async {
     HapticFeedback.lightImpact();
-    await VoiceNavigator.I.holdToListen(confirmOptIn: () => (confirmOptIn ?? _askOptIn)(context));
+    await VoiceNavigator.I.holdToListen(confirmOptIn: () => (confirmOptIn ?? askOptIn)(context));
   }
 
-  static Future<bool> _askOptIn(BuildContext context) async {
+  /// How long a finger must stay on the button to start listening (shorter than the
+  /// platform's 500ms so it feels instant; a normal tap is far shorter).
+  static const Duration holdDelay = Duration(milliseconds: 400);
+
+  static Future<bool> askOptIn(BuildContext context) async {
     if (!context.mounted) return false;
     final r = await showPop<bool>(
       context,
@@ -728,10 +769,19 @@ class NavHoldTrigger extends StatelessWidget {
           final v = VoiceNavigator.I;
           final on = v.adminOn;
           final listening = on && v.state == NavVoiceState.listening && v.listenSource == 'hold';
-          return GestureDetector(
+          // t421: a RawGestureDetector with its own long-press recognizer (400ms, start event)
+          // competes in the same arena as the inner Pressable's tap: lifting early = the tap
+          // wins (opens Tatv AI); holding = the long press wins and the tap is cancelled.
+          return RawGestureDetector(
             key: ValueKey('nav-hold-$id'),
             behavior: HitTestBehavior.deferToChild,
-            onLongPress: on ? () => _hold(context) : null,
+            gestures: <Type, GestureRecognizerFactory>{
+              if (on)
+                LongPressGestureRecognizer: GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
+                  () => LongPressGestureRecognizer(duration: holdDelay, debugOwner: this),
+                  (r) => r.onLongPressStart = (_) => _hold(context),
+                ),
+            },
             child: Stack(clipBehavior: Clip.none, alignment: Alignment.center, children: [
               child,
               if (listening) const Positioned.fill(child: IgnorePointer(child: _ListeningRing())),

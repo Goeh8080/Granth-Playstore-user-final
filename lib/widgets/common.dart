@@ -129,11 +129,21 @@ class TouchCount {
 ///
 /// [direct]: the tap is a [TapTarget] (decided by the finger, can't be swallowed by a
 /// scroll / sheet / pinch layer around it) — used for the small setting and grid buttons.
+/// t421: the folder tiles' press size ("halka bada").
+const double kGrowScale = 1.05;
+
 class Pressable extends StatefulWidget {
-  const Pressable({super.key, required this.child, this.onTap, this.scale = 0.96, this.enabled = true, this.behavior = HitTestBehavior.opaque, this.direct = false});
+  const Pressable({super.key, required this.child, this.onTap, this.scale = 0.96, this.enabled = true, this.behavior = HitTestBehavior.opaque, this.direct = false, this.glow});
   final Widget child;
   final VoidCallback? onTap;
+
+  /// Pressed size. Below 1 = the classic shrink; above 1 (e.g. [kGrowScale]) = the folder
+  /// tiles' "grow" press (fast 120ms easeOut in, soft spring back).
   final double scale;
+
+  /// t421: with a radius, a soft gold glow fades in under the child while it is pressed
+  /// (cheap BoxShadow, no shader).
+  final BorderRadius? glow;
   final bool enabled;
   final HitTestBehavior behavior;
   final bool direct;
@@ -152,15 +162,31 @@ class _PressableState extends State<Pressable> {
   @override
   Widget build(BuildContext context) {
     final on = widget.enabled && widget.onTap != null;
+    final grow = widget.scale > 1;
+    final calm = grow && !UiPrefs.I.animations;
+    Widget inner = AnimatedOpacity(
+      opacity: widget.enabled ? 1 : 0.6,
+      duration: const Duration(milliseconds: 150),
+      child: widget.child,
+    );
+    final glow = widget.glow;
+    if (glow != null) {
+      inner = AnimatedContainer(
+        duration: Duration(milliseconds: _down ? 120 : 260),
+        curve: Curves.easeOut,
+        decoration: BoxDecoration(
+          borderRadius: glow,
+          // no shadow at rest (nothing to paint while scrolling)
+          boxShadow: _down && !calm ? [BoxShadow(color: GColors.gold.withValues(alpha: 0.38), blurRadius: 18, spreadRadius: 1)] : const [],
+        ),
+        child: inner,
+      );
+    }
     final body = AnimatedScale(
-      scale: _down ? widget.scale : 1,
-      duration: Duration(milliseconds: _down ? 90 : 220),
-      curve: _down ? Curves.easeOut : Curves.elasticOut,
-      child: AnimatedOpacity(
-        opacity: widget.enabled ? 1 : 0.6,
-        duration: const Duration(milliseconds: 150),
-        child: widget.child,
-      ),
+      scale: _down ? (calm ? 1.0 : widget.scale) : 1,
+      duration: grow ? Duration(milliseconds: _down ? 120 : 320) : Duration(milliseconds: _down ? 90 : 220),
+      curve: grow ? (_down ? Curves.easeOut : Curves.easeOutBack) : (_down ? Curves.easeOut : Curves.elasticOut),
+      child: inner,
     );
     if (widget.direct) {
       return TapTarget(behavior: widget.behavior, onTap: on ? widget.onTap : null, onHighlight: on ? _set : null, child: body);
@@ -459,8 +485,12 @@ class LookBuilder extends StatelessWidget {
 
 /// `.card` container.
 class GCard extends StatelessWidget {
-  const GCard({super.key, required this.child, this.padding = const EdgeInsets.all(16), this.onTap, this.clip = false, this.decorate});
+  const GCard({super.key, required this.child, this.padding = const EdgeInsets.all(16), this.onTap, this.clip = false, this.decorate, this.grow = false});
   final Widget child;
+
+  /// t421: press makes the card grow slightly ([kGrowScale]) with a soft gold glow instead of
+  /// the default tiny shrink (folder tiles only; every other card keeps the shrink).
+  final bool grow;
 
   /// Optional per-look decoration (null result = the look's own card).
   final BoxDecoration? Function(String look)? decorate;
@@ -479,7 +509,7 @@ class GCard extends StatelessWidget {
           decoration: deco,
           child: clip ? ClipRRect(borderRadius: radius, child: Padding(padding: padding, child: child)) : Padding(padding: padding, child: child),
         );
-        if (onTap != null) c = Pressable(onTap: onTap, scale: 0.985, child: c);
+        if (onTap != null) c = Pressable(onTap: onTap, scale: grow ? kGrowScale : 0.985, glow: grow ? radius : null, child: c);
         return c;
       },
     );
@@ -1033,7 +1063,8 @@ class _EntryState extends State<Entry> with SingleTickerProviderStateMixin {
     final key = widget.ledger != null && widget.id != null ? 'e:${widget.id}' : null;
     final seen = key != null && widget.ledger!.played(key);
     if (key != null) widget.ledger!.mark(key);
-    if (widget.index > 12 || seen) {
+    // t421: the setting एनिमेशन "कम" (off) shows the cards in place, no entrance.
+    if (widget.index > 12 || seen || !UiPrefs.I.animations) {
       _c.value = 1;
     } else {
       _c.forward();

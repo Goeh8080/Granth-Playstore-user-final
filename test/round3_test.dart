@@ -472,9 +472,8 @@ void main() {
       final title = find.text('Granths').first;
       final h = tester.getSize(title).height;
       expect(h, lessThan(28 * scale * 1.1 * 1.5), reason: 'one line');
-      final btn = tester.getRect(find.byKey(const ValueKey('header-trailing')));
-      final t = tester.getRect(title);
-      expect(btn.top, greaterThanOrEqualTo(t.bottom - 1), reason: 'button sits below the title line');
+      // t421: the pill sits in the title row, as on Topics (same header as the other tabs)
+      expect(find.byKey(const ValueKey('multi-pdf-pill')), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     });

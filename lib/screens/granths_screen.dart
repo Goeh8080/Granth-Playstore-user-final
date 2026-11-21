@@ -26,7 +26,7 @@ import '../widgets/panel.dart';
 import '../widgets/pop.dart';
 import '../widgets/pdf_sheets.dart';
 
-/// `Dh` — Granths / Sacred texts and scriptures.
+/// `Dh` — Granths / पवित्र ग्रंथ.
 ///
 /// Round 10: the same panel (header, search, 1×1/2×2/3×3 grid, [GranthCard]s) serves every
 /// granth list: the flat list of all granths (the default), one folder ([scope]) and the
@@ -38,7 +38,7 @@ class GranthsPanel extends StatefulWidget {
     this.placeKey = 'granth-list-place',
     this.scope,
     this.title = 'Granths',
-    this.subtitle = 'Sacred texts and scriptures',
+    this.subtitle = 'पवित्र ग्रंथ',
     this.leading,
     this.idle,
     this.emptyNote = '',
@@ -121,7 +121,9 @@ class _GranthsPanelState extends State<GranthsPanel> with LivePanel {
             title: widget.title,
             subtitle: widget.subtitle,
             leading: leading,
-            trailingLow: true,
+            // t421: the same header as Topics / प्रमाण (trailing pill in the title row, one-line
+            // subtitle), so the header has the same size as the other tabs.
+            titleOneLine: true,
             trailing: Pressable(
               key: const ValueKey('multi-pdf-pill'),
               onTap: multiPdf,

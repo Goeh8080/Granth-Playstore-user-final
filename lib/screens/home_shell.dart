@@ -241,10 +241,9 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
 
   /// The floating "Ask Tatv AI" button: everywhere except the AI chat (it has its own composer),
   /// and not when the admin has turned AI off.
-  /// v2 (ref1–3): on the Granth tab's top level the page itself starts with the "Granths"
-  /// header row, so the app bar is one slim row (menu · logo · gallery · settings · account)
-  /// with slim one-line stats and the menu button moved into it. Every action stays.
-  static bool _slimMast(GRoute r) => r.panel == Panel.granths && r.religionId == null;
+  /// t421 (Goutam: "match from others"): the Granth tab uses the same full app bar + menu row
+  /// as every other tab again (the t408 slim one-row bar is no longer used anywhere).
+  static bool _slimMast(GRoute r) => false;
 
   bool _fabShown(GRoute r) => r.panel != Panel.ai && RemoteConfig.I.aiEnabled && !_deckOpen;
 

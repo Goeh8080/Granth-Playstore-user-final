@@ -66,7 +66,7 @@ void main() {
       // t421: the old PageHeader is back (the temple/serif hero is removed)
       expect(find.byType(PageHeader), findsWidgets);
       expect(find.text('Granths'), findsOneWidget);
-      expect(find.text('Sacred texts and scriptures'), findsOneWidget);
+      expect(find.text('पवित्र ग्रंथ'), findsOneWidget); // t421: same one-line header as the other tabs
       expect(find.byKey(const ValueKey('multi-pdf-pill')), findsOneWidget);
       for (final n in [1, 2, 3]) {
         expect(find.byKey(ValueKey('grid-$n')), findsOneWidget);

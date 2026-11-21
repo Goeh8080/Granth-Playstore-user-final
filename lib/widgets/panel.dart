@@ -12,7 +12,7 @@ double panelDx() => 28.0 * AppNav.I.direction;
 
 /// `.page-header` (+ `.sticky-bar` when [sticky]).
 class PageHeader extends StatelessWidget {
-  const PageHeader({super.key, required this.tone, required this.icon, required this.title, required this.subtitle, this.trailing, this.tools, this.trailingLow = false, this.leading});
+  const PageHeader({super.key, required this.tone, required this.icon, required this.title, required this.subtitle, this.trailing, this.tools, this.trailingLow = false, this.leading, this.titleOneLine = false});
   final Tone tone;
   final String icon;
   final String title;
@@ -26,6 +26,10 @@ class PageHeader extends StatelessWidget {
   /// Put [trailing] a little lower, beside the subtitle, so the title keeps the full width
   /// and stays on one line (Granths: "Multiple granth PDF" made "Granths" wrap at 360 dp).
   final bool trailingLow;
+
+  /// t421: keep the title on one line (it shrinks a little on narrow phones instead of
+  /// wrapping), so the header keeps the same height. Off by default (other tabs unchanged).
+  final bool titleOneLine;
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +68,14 @@ class PageHeader extends StatelessWidget {
       const SizedBox(width: 12),
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-          Text(title, style: GText.display(size: 28, color: GColors.maroon, height: 1.1)),
+          if (titleOneLine)
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(title, maxLines: 1, softWrap: false, style: GText.display(size: 28, color: GColors.maroon, height: 1.1)),
+            )
+          else
+            Text(title, style: GText.display(size: 28, color: GColors.maroon, height: 1.1)),
           const SizedBox(height: 2),
           Text(subtitle, style: GText.sans(size: 13, color: GColors.muted, height: 1.5)),
         ]),

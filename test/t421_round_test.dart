@@ -1,6 +1,6 @@
 // t421 (Goutam, 21 Nov 2026): Granth tab "pehle jesa" (no hero), old folder logo sizes, the
-// grow-on-press, the chooser / Settings videos, admin media (icon_url / icon_video_url /
-// chooser + brand videos), the Navigator's cached-phrase-only voice and wake on opt-in.
+// grow-on-press, the chooser / Settings videos, admin media (the public media manifest),
+// the Navigator's cached-phrase-only voice and wake on opt-in.
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -10,11 +10,12 @@ import 'package:granthprabandhan/ai/navigator/nav_phrases.dart';
 import 'package:granthprabandhan/ai/navigator/nav_tts.dart';
 import 'package:granthprabandhan/ai/navigator/voice_navigator.dart';
 import 'package:granthprabandhan/config.dart';
-import 'package:granthprabandhan/models/structure.dart';
 import 'package:granthprabandhan/screens/shelves_screen.dart';
+import 'package:granthprabandhan/services/media_manifest.dart';
 import 'package:granthprabandhan/services/remote_config.dart';
 import 'package:granthprabandhan/services/storage.dart';
 import 'package:granthprabandhan/widgets/common.dart';
+import 'package:granthprabandhan/widgets/granth_view_setting.dart' show granthViewVideoOverride;
 import 'package:granthprabandhan/widgets/remote_media.dart';
 
 import 'helpers.dart';
@@ -77,40 +78,67 @@ void main() {
     expect(taps, 1);
   });
 
-  test('admin media URLs: https + right type only, unknown/missing → null (backward compatible)', () {
-    expect(parseMediaUrl('https://x.dev/a/icon.png', kImageExts), 'https://x.dev/a/icon.png');
-    expect(parseMediaUrl('https://x.dev/a/icon.svg?v=2', kImageExts), isNotNull);
-    expect(parseMediaUrl('https://x.dev/a/loop.mp4', kVideoExts), isNotNull);
-    expect(parseMediaUrl('http://x.dev/a/icon.png', kImageExts), isNull);
-    expect(parseMediaUrl('https://x.dev/a/loop.mp4', kImageExts), isNull);
-    expect(parseMediaUrl(42, kImageExts), isNull);
-    expect(parseMediaUrl(null, kVideoExts), isNull);
-    final s = parseStructure({
-      'religions': [
-        {
-          'id': 'hindu',
-          'title': 'हिन्दू',
-          'icon': 'om',
-          'icon_url': 'https://cdn.x/om.webp',
-          'icon_video_url': 'https://cdn.x/om.mp4',
-          'groups': [
-            {'id': 'ved', 'title': 'वेद', 'icon': 'scroll', 'icon_url': 'https://cdn.x/ved.png', 'future_field': 1},
-            {'id': 'gita', 'title': 'गीता', 'icon': 'book-red', 'icon_video_url': 'ftp://bad'},
-          ],
-        },
+  test('media manifest: icons per target (newest wins), playable videos by placement, tolerant', () {
+    final m = parseMediaManifest({
+      'revision': 7,
+      'icons': [
+        {'target': 'folder:ved', 'url': 'https://m.x/ved-old.png?v=1', 'mime': 'image/png', 'updated_at': '2026-11-20T10:00:00Z'},
+        {'target': 'folder:ved', 'url': 'https://m.x/ved.webp?v=2', 'mime': 'image/webp', 'updated_at': '2026-11-21T10:00:00Z'},
+        {'target': 'folder:ved/rigved', 'url': 'https://m.x/rig.png'},
+        {'target': '', 'url': 'https://m.x/library.png'},
+        {'target': 'folder:x', 'url': 'http://m.x/insecure.png'},
+        {'target': 'folder:y', 'url': 'https://m.x/y.svg'},
+        'junk',
       ],
-      'other': {'title': 'अन्य', 'icon_video_url': 'https://cdn.x/other.mp4'},
+      'videos': [
+        {'placement': 'chooser_list', 'url': 'https://m.x/b.mp4', 'provider': 'r2', 'position': 2},
+        {'placement': 'chooser_list', 'url': 'https://youtu.be/abc', 'provider': 'youtube', 'position': 1},
+        {'placement': 'folder', 'target': 'folder:ved', 'url': 'https://m.x/ved.mp4', 'provider': 'direct', 'loop': true, 'poster_url': 'https://m.x/ved.jpg'},
+        {'placement': 'settings', 'target': null, 'url': 'https://m.x/bg.mp4', 'provider': 'direct'},
+        {'placement': 'nowhere', 'url': 'https://m.x/n.mp4'},
+        {'placement': 'granths', 'url': 'https://m.x/off.mp4', 'active': false},
+      ],
+      'future': {'a': 1},
     })!;
-    final h = s.religions.single;
-    expect(h.iconUrl, 'https://cdn.x/om.webp');
-    expect(h.iconVideoUrl, 'https://cdn.x/om.mp4');
-    expect(h.groups.first.iconUrl, 'https://cdn.x/ved.png');
-    expect(h.groups.first.iconVideoUrl, isNull);
-    expect(h.groups.last.iconVideoUrl, isNull, reason: 'bad URL ignored');
-    expect(h.groups.last.icon, 'book-red', reason: 'painted icon stays');
-    expect(s.other.iconVideoUrl, 'https://cdn.x/other.mp4');
-    // bundled structure (no media fields) still parses
-    expect(Structure.fromMap({'religions': [{'id': 'a', 'title': 'A'}]}).religions.single.iconUrl, isNull);
+    expect(m.revision, 7);
+    expect(m.icons['folder:ved']!.url, 'https://m.x/ved.webp?v=2');
+    expect(m.icons['folder:ved/rigved']!.url, 'https://m.x/rig.png');
+    expect(m.icons.containsKey(''), isFalse);
+    expect(m.icons.containsKey('folder:x'), isFalse);
+    expect(m.icons.containsKey('folder:y'), isFalse, reason: 'PNG / WebP only');
+    final mm = MediaManifest()..debugSet(m);
+    expect(mm.videoFor('chooser_list')!.url, 'https://m.x/b.mp4', reason: 'youtube skipped');
+    expect(mm.videoFor('chooser_list')!.loop, isFalse, reason: 'default: play once');
+    expect(mm.videoFor('chooser_folders'), isNull, reason: 'bundled lotus stays');
+    expect(mm.videoFor('folder', target: 'folder:ved')!.loop, isTrue);
+    expect(mm.videoFor('folder', target: 'folder:ved')!.posterUrl, 'https://m.x/ved.jpg');
+    expect(mm.videoFor('settings')!.url, 'https://m.x/bg.mp4');
+    expect(mm.videoFor('granths'), isNull, reason: 'inactive');
+    expect(mm.iconFor('folder:gita'), isNull, reason: 'built-in v3 icon');
+    // empty / malformed manifests
+    expect(parseMediaManifest({'icons': [], 'videos': []})!.icons, isEmpty);
+    expect(parseMediaManifest('nope'), isNull);
+    expect(parseMediaManifest({})!.videos, isEmpty);
+  });
+
+  test('chooser previews: manifest chooser_* overrides, settings placement does not', () {
+    final saved = MediaManifest.I;
+    addTearDown(() => MediaManifest.I = saved);
+    MediaManifest.I = MediaManifest()
+      ..debugSet(parseMediaManifest({
+        'videos': [
+          {'placement': 'settings', 'url': 'https://m.x/bg.mp4', 'provider': 'direct'},
+        ],
+      })!);
+    expect(granthViewVideoOverride('folders'), isNull);
+    expect(granthViewVideoOverride('list'), isNull);
+    MediaManifest.I.debugSet(parseMediaManifest({
+      'videos': [
+        {'placement': 'chooser_folders', 'url': 'https://m.x/f.mp4', 'provider': 'firebase_storage'},
+      ],
+    })!);
+    expect(granthViewVideoOverride('folders')!.url, 'https://m.x/f.mp4');
+    expect(granthViewVideoOverride('list'), isNull);
   });
 
   testWidgets('RemoteIcon: no URLs → the painted fallback; LoopVideo in tests shows its fallback', (t) async {

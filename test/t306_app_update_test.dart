@@ -47,6 +47,18 @@ void main() {
     expect(u.isNewer, isTrue);
   });
 
+  test('t421: reshow / minVersion parsed; minVersion above latest is ignored', () {
+    final r = parseAppUpdate({'latestVersion': '1.0.2', 'reshow': true})!;
+    expect(r.reshow, isTrue);
+    expect(r.everyStart, isTrue);
+    final m = parseAppUpdate({'latestVersion': '1.0.3', 'minVersion': '1.0.2'})!;
+    expect(m.minVersion, '1.0.2');
+    expect(m.everyStart, isTrue, reason: '1.0.1 < 1.0.2');
+    expect(parseAppUpdate({'latestVersion': '1.0.3', 'minVersion': '1.0.1'})!.everyStart, isFalse);
+    expect(parseAppUpdate({'latestVersion': '1.0.3', 'minVersion': '2.0.0'})!.minVersion, isNull);
+    expect(parseAppUpdate({'latestVersion': '1.0.3'})!.everyStart, isFalse, reason: 'absent = once per version');
+  });
+
   test('version compare', () {
     expect(compareVersions('1.0.10', '1.0.9'), 1);
     expect(compareVersions('1.0', '1.0.0'), 0);
@@ -67,7 +79,7 @@ void main() {
 
   testWidgets('newer version: dialog once, notification logged, download offers Play + APK', (t) async {
     await boot(t);
-    RemoteConfig.I.appUpdate = parseAppUpdate({'latest_version': '1.0.1', 'message': 'नया अपडेट आया है', 'apk_url': 'https://x.dev/g.apk'});
+    RemoteConfig.I.appUpdate = parseAppUpdate({'latest_version': '1.0.2', 'message': 'नया अपडेट आया है', 'apk_url': 'https://x.dev/g.apk'});
     AppUpdate.I.check();
     await t.pumpAndSettle();
     expect(find.byKey(const ValueKey('app-update-sheet')), findsOneWidget);
@@ -83,7 +95,7 @@ void main() {
     AppUpdate.I.check();
     await t.pumpAndSettle();
     expect(find.byKey(const ValueKey('app-update-sheet')), findsNothing);
-    expect(Store.I.getString(AppUpdate.kShown), '1.0.1+');
+    expect(Store.I.getString(AppUpdate.kShown), '1.0.2+');
     // …but the notification entry reopens it.
     await NotificationLog.I.open(NotificationLog.I.entries.single);
     await t.pumpAndSettle();
@@ -93,14 +105,15 @@ void main() {
     expect(t.takeException(), isNull);
   });
 
-  testWidgets('force hides "later" and shows every time; no APK link → Play only', (t) async {
+  testWidgets('t421: legacy force = reshow: shown every time but ALWAYS closable (✕ + later); no APK link → Play only', (t) async {
     await boot(t);
     RemoteConfig.I.appUpdate = parseAppUpdate({'latest_version': '2.0.0', 'force': true});
     Store.I.setString(AppUpdate.kShown, '2.0.0+');
     AppUpdate.I.check();
     await t.pumpAndSettle();
     expect(find.byKey(const ValueKey('app-update-sheet')), findsOneWidget);
-    expect(find.byKey(const ValueKey('app-update-later')), findsNothing);
+    expect(find.byKey(const ValueKey('app-update-later')), findsOneWidget);
+    expect(find.byKey(const ValueKey('app-update-close')), findsOneWidget);
     await t.tap(find.byKey(const ValueKey('app-update-download')));
     await t.pumpAndSettle();
     expect(find.byKey(const ValueKey('app-update-play')), findsOneWidget);

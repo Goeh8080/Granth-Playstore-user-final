@@ -80,13 +80,16 @@ class MediaCache {
   }
 }
 
-/// A muted looping video ([asset] or [url]; [url] wins) that fills its box ([fit]).
+/// A muted video ([url] wins; if it fails to load / play, the bundled [asset] is tried, then
+/// [fallback]) that fills its box ([fit]). [loop] = loop forever; otherwise it plays once and
+/// holds the last frame (the manifest default). Reduced motion / animations "कम" = a still frame.
 class LoopVideo extends StatefulWidget {
-  const LoopVideo({super.key, this.asset, this.url, required this.fallback, this.fit = BoxFit.cover});
+  const LoopVideo({super.key, this.asset, this.url, required this.fallback, this.fit = BoxFit.cover, this.loop = true});
   final String? asset;
   final String? url;
   final Widget fallback;
   final BoxFit fit;
+  final bool loop;
 
   /// At most this many players exist at once (the rest show their fallback).
   static const int maxLive = 8;
@@ -99,10 +102,10 @@ class LoopVideo extends StatefulWidget {
 class _LoopVideoState extends State<LoopVideo> with WidgetsBindingObserver {
   VideoPlayerController? _c;
   bool _ready = false, _failed = false, _visible = false, _foreground = true, _tickers = true, _calm = false;
-  bool _counted = false, _checkQueued = false;
+  bool _counted = false, _checkQueued = false, _urlFailed = false, _ended = false;
   ScrollPosition? _pos;
 
-  String? get _src => (widget.url?.isNotEmpty ?? false) ? widget.url : widget.asset;
+  String? get _src => (widget.url?.isNotEmpty ?? false) && !_urlFailed ? widget.url : widget.asset;
 
   @override
   void initState() {
@@ -129,6 +132,8 @@ class _LoopVideoState extends State<LoopVideo> with WidgetsBindingObserver {
     if (old.url != widget.url || old.asset != widget.asset) {
       _drop();
       _failed = false;
+      _urlFailed = false;
+      _ended = false;
       _queueCheck();
     }
   }
@@ -182,23 +187,56 @@ class _LoopVideoState extends State<LoopVideo> with WidgetsBindingObserver {
     try {
       await c.initialize();
       await c.setVolume(0);
-      await c.setLooping(true);
+      await c.setLooping(widget.loop);
+      c.addListener(() => _watch(c, src));
       if (!mounted || !identical(_c, c)) return;
-      if (_calm) await c.seekTo(c.value.duration * 0.75);
+      // still frame: the last frame for play-once clips, a late frame for loops
+      if (_calm) await c.seekTo(widget.loop ? c.value.duration * 0.75 : c.value.duration - const Duration(milliseconds: 100));
       setState(() => _ready = true);
       _apply();
     } catch (_) {
       if (identical(_c, c)) {
         _drop();
-        if (mounted) setState(() => _failed = true);
+        if (!mounted) return;
+        if (src.startsWith('http') && (widget.asset?.isNotEmpty ?? false)) {
+          // the admin's file failed: the bundled clip instead
+          _urlFailed = true;
+          setState(() {});
+          _queueCheck();
+        } else {
+          setState(() => _failed = true);
+        }
       }
     }
+  }
+
+  /// Play-once: remember the end (the last frame stays on screen; never restarted). A play
+  /// error = the same fallback as a load error (bundled clip, then the still / painted one).
+  void _watch(VideoPlayerController c, String src) {
+    if (!identical(_c, c)) return;
+    final v = c.value;
+    if (v.hasError) {
+      scheduleMicrotask(() {
+        if (!identical(_c, c)) return;
+        _drop();
+        if (!mounted) return;
+        if (src.startsWith('http') && (widget.asset?.isNotEmpty ?? false)) {
+          _urlFailed = true;
+          setState(() {});
+          _queueCheck();
+        } else {
+          setState(() => _failed = true);
+        }
+      });
+      return;
+    }
+    if (!widget.loop && !_ended && v.isInitialized && v.duration > Duration.zero && v.position >= v.duration - const Duration(milliseconds: 80) && !v.isPlaying) _ended = true;
   }
 
   void _apply() {
     final c = _c;
     if (c == null || !_ready) return;
-    final play = _visible && _foreground && _tickers && !_calm;
+    final play = _visible && _foreground && _tickers && !_calm && !_ended;
     if (play && !c.value.isPlaying) {
       c.play();
     } else if (!play && c.value.isPlaying) {
@@ -247,12 +285,15 @@ class _LoopVideoState extends State<LoopVideo> with WidgetsBindingObserver {
   }
 }
 
-/// A folder picture: admin [videoUrl] (muted loop) › admin [imageUrl] › [fallback] (the
-/// painted v3 icon, also shown while loading / offline / on error).
+/// A folder picture: admin [videoUrl] (muted, play once + hold last frame unless [loop]) ›
+/// admin [imageUrl] (PNG/WebP) › [fallback] (the painted v3 icon, also shown while loading /
+/// offline / on error). [posterUrl] is shown while the video loads.
 class RemoteIcon extends StatelessWidget {
-  const RemoteIcon({super.key, this.imageUrl, this.videoUrl, required this.size, required this.fallback});
+  const RemoteIcon({super.key, this.imageUrl, this.videoUrl, this.posterUrl, this.loop = false, required this.size, required this.fallback});
   final String? imageUrl;
   final String? videoUrl;
+  final String? posterUrl;
+  final bool loop;
   final double size;
   final Widget fallback;
 
@@ -261,13 +302,16 @@ class RemoteIcon extends StatelessWidget {
     final img = imageUrl;
     final vid = videoUrl;
     if ((img == null || img.isEmpty) && (vid == null || vid.isEmpty)) return fallback;
-    final still = img != null && img.isNotEmpty ? _NetImage(url: img, size: size, fallback: fallback) : fallback;
+    final pic = img != null && img.isNotEmpty ? img : posterUrl;
+    final still = pic != null && pic.isNotEmpty ? _NetImage(url: pic, size: size, fallback: fallback) : fallback;
     if (vid == null || vid.isEmpty) return still;
+    // reduced motion: the still only (no video download) when there is one
+    if (pic != null && pic.isNotEmpty && (!UiPrefs.I.animations || MediaQuery.disableAnimationsOf(context))) return still;
     return SizedBox.square(
       dimension: size,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(size * 0.24),
-        child: LoopVideo(url: vid, fallback: still),
+        child: LoopVideo(url: vid, loop: loop, fallback: still),
       ),
     );
   }

@@ -159,12 +159,14 @@ void main() {
     });
   });
 
-  group('POST /ask iid / uid', () {
-    test('additive, validated like presence', () {
+  group('POST /ask iid / app_version / id_token', () {
+    test('additive, validated like presence; t421: no raw uid', () {
       final base = buildAskBody('q', const [], const <Candidate>[]);
-      expect(base.containsKey('iid') || base.containsKey('uid'), isFalse, reason: 'old callers unchanged');
-      final b = buildAskBody('q', const [], const <Candidate>[], iid: _iid, uid: 'Abc_123-x');
-      expect((b['iid'], b['uid']), (_iid, 'Abc_123-x'));
+      expect(base.containsKey('iid') || base.containsKey('uid') || base.containsKey('app_version') || base.containsKey('id_token'), isFalse, reason: 'old callers unchanged');
+      final b = buildAskBody('q', const [], const <Candidate>[], iid: _iid, uid: 'Abc_123-x', appVersion: '1.0.1', idToken: 'aaa.bbb.ccc');
+      expect((b['iid'], b['app_version'], b['id_token']), (_iid, '1.0.1', 'aaa.bbb.ccc'));
+      expect(b.containsKey('uid'), isFalse, reason: 't421: the uid is never sent as identity');
+      expect(buildAskBody('q', const [], const <Candidate>[], idToken: 'not a jwt').containsKey('id_token'), isFalse);
       final bad = buildAskBody('q', const [], const <Candidate>[], iid: 'XYZ', uid: 'bad uid/..');
       expect(bad.containsKey('iid') || bad.containsKey('uid'), isFalse);
     });

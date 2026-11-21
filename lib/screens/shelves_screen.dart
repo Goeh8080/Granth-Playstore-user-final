@@ -8,6 +8,7 @@ import '../models/structure.dart';
 import '../services/catalog_store.dart';
 import '../services/storage.dart';
 import '../services/remote_config.dart';
+import '../services/media_manifest.dart';
 import '../services/order.dart' show numericCompare;
 import '../services/search.dart';
 import '../state/ui_prefs.dart';
@@ -75,7 +76,7 @@ class ShelvesPanel extends StatelessWidget {
       scope: ShelfScope(religion.id, group.id, group.hasSubgroups ? leaf.id : null),
       title: leaf.title,
       subtitle: group.hasSubgroups ? '${religion.title} • ${group.title}' : religion.title,
-      leading: RemoteIcon(imageUrl: leaf.iconUrl, videoUrl: leaf.iconVideoUrl, size: 44, fallback: GroupIcon(leaf.icon, size: 44)),
+      leading: folderPic(group.hasSubgroups ? 'folder:${group.id}/${leaf.id}' : 'folder:${group.id}', 44, GroupIcon(leaf.icon, size: 44)),
       emptyNote: leaf.comingSoon,
     );
   }
@@ -190,6 +191,18 @@ class FolderRow extends StatelessWidget {
     );
   }
 }
+
+/// t421: a folder's picture — the admin's manifest override for [target] (`folder:<id>` or
+/// `folder:<group>/<sub>`): video (placement `folder`) › icon (PNG/WebP) › the built-in v3
+/// [painted] icon (also while loading / offline / on any error).
+Widget folderPic(String target, double size, Widget painted) => ListenableBuilder(
+      listenable: MediaManifest.I,
+      builder: (context, _) {
+        final m = MediaManifest.I;
+        final v = m.videoFor('folder', target: target);
+        return RemoteIcon(imageUrl: m.iconFor(target), videoUrl: v?.url, posterUrl: v?.posterUrl, loop: v?.loop ?? false, size: size, fallback: painted);
+      },
+    );
 
 /// t368: the default (सादा) card of the Granth tab folders — warm cream, soft gold rim, gold
 /// glow shadow. Every other card style keeps its own look.
@@ -306,7 +319,7 @@ class _ReligionFolders extends StatelessWidget {
       ids.add(r.id);
       rows.add(FolderRow(
         cols: cols,
-        leading: (size) => RemoteIcon(imageUrl: r.iconUrl, videoUrl: r.iconVideoUrl, size: size, fallback: ReligionSymbol(r.icon, tone: _tone(r.tone), size: size)),
+        leading: (size) => folderPic('folder:${r.id}', size, ReligionSymbol(r.icon, tone: _tone(r.tone), size: size)),
         title: r.title,
         subtitle: list.isEmpty ? (r.comingSoon.isNotEmpty ? r.comingSoon : 'जल्द आ रहा है') : _count(list.length, ShelfIndex.pramans(list)),
         dim: list.isEmpty,
@@ -319,7 +332,7 @@ class _ReligionFolders extends StatelessWidget {
       ids.add(kOtherId);
       rows.add(FolderRow(
         cols: cols,
-        leading: (size) => RemoteIcon(imageUrl: index.structure.other.iconUrl, videoUrl: index.structure.other.iconVideoUrl, size: size, fallback: ReligionSymbol(index.structure.other.icon, tone: _tone(index.structure.other.tone), size: size)),
+        leading: (size) => folderPic('folder:$kOtherId', size, ReligionSymbol(index.structure.other.icon, tone: _tone(index.structure.other.tone), size: size)),
         title: index.structure.other.title,
         subtitle: other.isEmpty ? index.structure.other.comingSoon : _count(other.length, ShelfIndex.pramans(other)),
         dim: other.isEmpty,
@@ -379,7 +392,7 @@ class _FolderScreenState extends State<_FolderScreen> with LivePanel {
       ids.add(c.id);
       rows.add(FolderRow(
         cols: cols,
-        leading: (size) => RemoteIcon(imageUrl: c.iconUrl, videoUrl: c.iconVideoUrl, size: size, fallback: GroupIcon(c.icon, size: size)),
+        leading: (size) => folderPic(group == null ? 'folder:${c.id}' : 'folder:${group.id}/${c.id}', size, GroupIcon(c.icon, size: size)),
         title: c.title,
         subtitle: _count(list.length, ShelfIndex.pramans(list)),
         navHash: GRoute.folderHash(religion: religion.id, group: group?.id ?? c.id, sub: group == null ? null : c.id),
@@ -395,8 +408,8 @@ class _FolderScreenState extends State<_FolderScreen> with LivePanel {
             tone: _tone(religion.tone),
             icon: religion.icon,
             leading: group == null
-                ? RemoteIcon(imageUrl: religion.iconUrl, videoUrl: religion.iconVideoUrl, size: 44, fallback: ReligionSymbol(religion.icon, tone: _tone(religion.tone), size: 44))
-                : RemoteIcon(imageUrl: group.iconUrl, videoUrl: group.iconVideoUrl, size: 44, fallback: GroupIcon(group.icon, size: 44)),
+                ? folderPic('folder:${religion.id}', 44, ReligionSymbol(religion.icon, tone: _tone(religion.tone), size: 44))
+                : folderPic('folder:${group.id}', 44, GroupIcon(group.icon, size: 44)),
             tools: Tools(
               grid: GridSwitch(locked: UiPrefs.I.gridLocked(searching ? 'granths' : 'shelves'), options: const [1, 2, 3], value: cols, onChanged: (v) => UiPrefs.I.setCols(Store.kGranthCols, v)),
               search: SearchField(placeholder: 'सभी ग्रंथों में खोजें', initial: _query, onChanged: (q) {

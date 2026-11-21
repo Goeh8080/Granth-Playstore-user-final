@@ -78,9 +78,6 @@ class ParsedConfig {
     this.uiTerms = TermsInfo.fallback,
     this.uiLoginRequired = false,
     this.uiGranthViewMode,
-    this.uiChooserVideoFolders,
-    this.uiChooserVideoList,
-    this.uiBrandVideoUrl,
     this.navigatorEnabled = false,
     this.navigatorVoices = kNavDefaultVoices,
     this.navigatorVoiceId,
@@ -130,11 +127,6 @@ class ParsedConfig {
   /// `ui.granth_view_mode` (t301): `folders` / `list` forces the root Granth view for every
   /// user and skips the first-use chooser; `user_choice` or absent → null (user decides once).
   final String? uiGranthViewMode;
-
-  /// t421 `ui.chooser_video_folders` / `ui.chooser_video_list` / `ui.brand_video_url`
-  /// (https mp4, optional): replace the bundled chooser loops / show a brand loop on the
-  /// Granth tab header. Null = bundled / nothing (docs/REMOTE_MEDIA.md).
-  final String? uiChooserVideoFolders, uiChooserVideoList, uiBrandVideoUrl;
 
   /// `ui.navigator_enabled` (alias `ui.navigatorEnabled`; legacy `flags.navigator_enabled`) (t304): voice Navigator ("Hey Granth / Hey Tatv"). Off unless the
   /// admin sets exactly `true`; even then each user must opt in (and grant the mic) in Settings.
@@ -268,8 +260,6 @@ ShelfGroup? _group(Object? raw, {required bool allowSub}) {
     notKeywords: words(j['notKeywords']),
     subgroups: subs,
     visible: j['visible'] != false,
-    iconUrl: parseMediaUrl(j['icon_url'], kImageExts),
-    iconVideoUrl: parseMediaUrl(j['icon_video_url'], kVideoExts),
     comingSoon: _title(j['coming_soon']),
   );
 }
@@ -302,8 +292,6 @@ Structure? parseStructure(Object? raw) {
         groups: groups,
         visible: m['visible'] != false,
         comingSoon: _title(m['coming_soon']),
-        iconUrl: parseMediaUrl(m['icon_url'], kImageExts),
-        iconVideoUrl: parseMediaUrl(m['icon_video_url'], kVideoExts),
       ),
     );
   }
@@ -320,8 +308,6 @@ Structure? parseStructure(Object? raw) {
               if (e is String && _gid.hasMatch(e)) e,
           ],
           comingSoon: _title(o['coming_soon']),
-          iconUrl: parseMediaUrl(o['icon_url'], kImageExts),
-          iconVideoUrl: parseMediaUrl(o['icon_video_url'], kVideoExts),
         );
   return Structure(religions: religions, other: other);
 }
@@ -447,9 +433,6 @@ ParsedConfig? parseConfig(String text, {int cachedVersion = 0, int appBuild = kB
       uiTerms: parseTerms(_map(j['ui'])),
       uiLoginRequired: _map(j['ui'])?['login_required'] == true,
       uiGranthViewMode: parseGranthViewMode(_map(j['ui'])),
-      uiChooserVideoFolders: parseMediaUrl(_map(j['ui'])?['chooser_video_folders'], kVideoExts),
-      uiChooserVideoList: parseMediaUrl(_map(j['ui'])?['chooser_video_list'], kVideoExts),
-      uiBrandVideoUrl: parseMediaUrl(_map(j['ui'])?['brand_video_url'], kVideoExts),
       navigatorEnabled: parseNavigatorEnabled(_map(j['ui']), f),
       navigatorVoices: parseNavigatorVoices(_map(j['ui'])),
       navigatorVoiceId: parseNavigatorVoiceId(_map(j['ui'])),
@@ -629,9 +612,6 @@ class RemoteConfig extends ChangeNotifier {
   /// Admin-forced root Granth view (`folders` / `list`), or null = the user's own once-only choice.
   String? uiGranthViewMode;
 
-  /// t421 admin media (see [ParsedConfig.uiChooserVideoFolders]).
-  String? uiChooserVideoFolders, uiChooserVideoList, uiBrandVideoUrl;
-
   /// Admin switch for the voice Navigator (default off).
   bool navigatorEnabled = false;
 
@@ -768,9 +748,6 @@ class RemoteConfig extends ChangeNotifier {
     uiTerms = p.uiTerms;
     uiLoginRequired = p.uiLoginRequired;
     uiGranthViewMode = p.uiGranthViewMode;
-    uiChooserVideoFolders = p.uiChooserVideoFolders;
-    uiChooserVideoList = p.uiChooserVideoList;
-    uiBrandVideoUrl = p.uiBrandVideoUrl;
     navigatorEnabled = p.navigatorEnabled;
     navigatorVoices = p.navigatorVoices;
     navigatorVoiceId = p.navigatorVoiceId;
@@ -827,9 +804,6 @@ class RemoteConfig extends ChangeNotifier {
     uiTerms = TermsInfo.fallback;
     uiLoginRequired = false;
     uiGranthViewMode = null;
-    uiChooserVideoFolders = null;
-    uiChooserVideoList = null;
-    uiBrandVideoUrl = null;
     navigatorEnabled = false;
     navigatorVoices = kNavDefaultVoices;
     navigatorVoiceId = null;

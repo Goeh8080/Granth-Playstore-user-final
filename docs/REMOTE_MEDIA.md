@@ -1,86 +1,56 @@
-# Remote media (t421) — admin-uploaded folder icons / videos
+# Admin media in the user app (consumer side) — v1.0.1+2
 
-All fields are **optional and additive**. A missing, empty, unknown or invalid value changes
-nothing: the app keeps the painted v3 icon pack and the bundled chooser videos. Older apps ignore
-the new keys.
+The app reads the **public media manifest** (Backend Developer contract, 21 Nov 2026). It adds
+**no** config fields: nothing in `config.json` / the structure carries media URLs.
 
-## URL rules (app side, `parseMediaUrl`)
-
-* `https://` only, max 800 characters, a real host.
-* The URL **path** must end in an allowed extension (a `?query` is fine):
-  * images: `.png` `.webp` `.jpg` `.jpeg` `.svg`
-  * videos: `.mp4` (H.264, muted is fine — the app always plays muted)
-* Recommended sizes: icon image 256–512 px square, ≤ 200 KB; icon video 240–360 px square,
-  H.264, ≤ 600 KB, 3–15 s loop; chooser / brand video 360 px square, ≤ 600 KB. Hard limit
-  per file: 12 MB (bigger downloads are dropped).
-* A changed file needs a **new URL** (e.g. add `?v=2`): the app caches each URL on disk
-  forever (`<app support>/remote_media/`) so it works offline.
-
-## Signed config JSON (`config.json`)
-
-### Per folder: `structure.religions[]`, `.groups[]`, `.groups[].subgroups[]`, `structure.other`
-
-```json
-{
-  "structure": {
-    "religions": [
-      {
-        "id": "hindu", "title": "हिन्दू", "icon": "om",
-        "icon_url": "https://<host>/media/hindu.webp",
-        "icon_video_url": "https://<host>/media/hindu.mp4",
-        "groups": [
-          { "id": "ved", "title": "वेद", "icon": "scroll",
-            "icon_url": "https://<host>/media/ved.png" },
-          { "id": "puran", "title": "पुराण", "icon": "book-green",
-            "icon_video_url": "https://<host>/media/puran.mp4",
-            "subgroups": [ { "id": "shiv", "title": "शिव पुराण", "icon_url": "https://<host>/media/shiv.svg" } ] }
-        ]
-      }
-    ],
-    "other": { "title": "अन्य", "icon_url": "https://<host>/media/other.png" }
-  }
-}
+```
+GET https://granth.wnmsolutions.com/media/manifest.json
 ```
 
-| field | type | meaning |
-|---|---|---|
-| `icon_url` | string (image URL) | picture shown instead of the painted `icon` |
-| `icon_video_url` | string (mp4 URL) | muted looping video shown instead of the picture/icon |
+* Fetched next to the signed config refresh (at most every 5 min), with `If-None-Match` (ETag);
+  `304` keeps the cached copy. The last good body is stored for offline starts.
+* Empty lists / no file / network error / malformed JSON → built-in icons and bundled videos.
+* Parsing is tolerant: unknown fields are ignored, bad entries skipped, `active: false` skipped.
+* Code: `lib/services/media_manifest.dart` (`MediaManifest.I.iconFor`, `.videoFor`),
+  `lib/widgets/remote_media.dart` (`RemoteIcon`, `LoopVideo`, `MediaCache`).
 
-Priority on a tile: `icon_video_url` › `icon_url` › painted `icon`. The painted icon (or the
-picture) is shown while the file loads, offline before the first download, or on any error.
-Videos play only while the tile is on screen (paused when scrolled away, in another tab, under
-another page or with the app in the background); at most 8 play at once. The existing `icon`
-key stays required-as-before (keep sending it: it is the fallback).
+## Icons (`icons[]`)
 
-### `ui` keys
+| field | use |
+| --- | --- |
+| `target` | `folder:<religion/group id>` (e.g. `folder:ved`), `folder:<group>/<sub>` (e.g. `folder:ved/rigved`), `slot:<name>` (e.g. `slot:home_banner`, reserved). `''` = library only → ignored |
+| `url` | https, PNG / WebP (JPEG tolerated). Cached on the phone by URL — change `?v=` to replace |
+| `mime` | if present must be `image/png` / `image/webp` / `image/jpeg` |
+| `updated_at` | one icon per target: the newest wins |
 
-```json
-{
-  "ui": {
-    "chooser_video_folders": "https://<host>/media/chooser_folders.mp4",
-    "chooser_video_list": "https://<host>/media/chooser_list.mp4",
-    "brand_video_url": "https://<host>/media/brand.mp4"
-  }
-}
-```
+No entry / failed download → the built-in v3 icon (the icon pack is unchanged: 56 keys; unknown
+keys → `misc`).
 
-| key | default when missing | where |
-|---|---|---|
-| `ui.chooser_video_folders` | bundled lotus loop (`assets/brand/video/lotus_folders.mp4`) | once-only "आप ग्रंथ कैसे देखना चाहेंगे" chooser + Settings → ग्रंथ दृश्य, option **फ़ोल्डर** |
-| `ui.chooser_video_list` | bundled book loop (`assets/brand/video/book_list.mp4`) | same, option **एक सूची / सभी ग्रंथ** |
-| `ui.brand_video_url` | nothing (normal header icon) | small looping logo in the Granth tab header (root) |
+## Videos (`videos[]`)
 
-`ui.granth_view_mode` (`folders` / `list`) still forces the view: the chooser is skipped and the
-Settings videos are shown greyed out (no tap).
+| field | use |
+| --- | --- |
+| `placement` | `home` \| `granths` \| `settings` \| `login` \| `splash` \| `dashboard` \| `folder` \| `chooser_folders` \| `chooser_list` |
+| `target` | `folder:<id>` (for `folder`) or `null` (general) |
+| `provider` | played: `direct`, `firebase_storage`, `r2`. Skipped: `youtube`, `google_drive` |
+| `url` | https video file |
+| `poster_url` | optional still shown while loading / on reduced motion |
+| `loop` | default **false** = play once (muted) and hold the last frame; `true` = loop |
+| `position` | order (first playable entry per placement + target is used) |
 
-## Backend Developer checklist (admin panel)
+Behaviour: always muted, mixes with other audio, only downloaded when actually shown, paused
+when off-screen / app in background. Animations "कम" (or system reduced motion) → still frame
+only. Any load / play error → fallback (below).
 
-1. Upload field per religion / group / sub-group / अन्य: "Icon image" (png/webp/jpg/svg) and
-   "Icon video" (mp4) → store the file (R2 / public bucket, https) → write its URL into
-   `icon_url` / `icon_video_url` of that node in the structure.
-2. Three upload fields under UI: chooser folders video, chooser list video, brand video →
-   `ui.chooser_video_folders`, `ui.chooser_video_list`, `ui.brand_video_url`.
-3. A "remove" button = delete the key (the app falls back to the painted icon / bundled video).
-4. Re-upload = new file name or `?v=<n>` (the app caches by URL).
-5. Re-sign and publish the config as usual (Ed25519); no other change is needed.
+### What the app uses in v1.0.1
+
+| placement | where | fallback |
+| --- | --- | --- |
+| `chooser_folders` | once-only "आप ग्रंथ कैसे देखना चाहेंगे" chooser + Settings → ग्रंथ दृश्य, option **फ़ोल्डर** | bundled lotus (`assets/brand/video/lotus_folders.mp4`, loops) |
+| `chooser_list` | same, option **एक सूची** | bundled book (`assets/brand/video/book_list.mp4`, loops) |
+| `folder` + `target` | that folder's tile / header picture (priority: video › icon › built-in) | admin icon, then built-in v3 icon |
+| `granths` (no target) | small picture in the Granth tab header | normal header icon |
+
+`settings` with an empty target is a general Settings background, **not** a chooser preview
+(not shown in v1.0.1). `home`, `login`, `splash`, `dashboard` are parsed but not shown yet —
+the splash is unchanged.

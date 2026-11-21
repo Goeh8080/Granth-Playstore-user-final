@@ -78,6 +78,20 @@ class FirebaseBridge extends ChangeNotifier {
     }
   }
 
+  /// t421: the Firebase ID token for `POST /ask` (`id_token`), only while signed in with Google;
+  /// null when signed out, Firebase is off or on any error. Never logged.
+  Future<String?> idToken() async {
+    if (!signedIn || !ready) return null;
+    try {
+      final u = FirebaseAuth.instance.currentUser;
+      if (u == null || !u.providerData.any((p) => p.providerId == 'google.com')) return null;
+      final t = await u.getIdToken();
+      return t == null || t.isEmpty ? null : t;
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Object? _decode(String? s) {
     try {
       return s == null ? null : jsonDecode(s);

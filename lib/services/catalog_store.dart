@@ -12,6 +12,7 @@ import 'admin_sync.dart';
 import 'ai_feedback.dart';
 import 'analytics.dart';
 import 'api.dart';
+import 'media_manifest.dart';
 import 'remote_config.dart';
 import 'events.dart';
 import 'image_cache.dart';
@@ -449,6 +450,8 @@ class CatalogStore extends ChangeNotifier {
     }
     // The signed config (folders, hidden granths, banner, flags) rides along with every sync.
     unawaited(RemoteConfig.I.refresh());
+    // t421: admin icons / videos (public media manifest, ETag; optional, decorative).
+    unawaited(MediaManifest.I.refresh());
     // Round 13, same cycle: the admin's key notes (ETag) and the answers to the user's questions.
     unawaited(AdminKnowledge.I.refresh());
     unawaited(AdminSync.I.poll());

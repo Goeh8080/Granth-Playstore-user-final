@@ -6,6 +6,7 @@ import '../theme/colors.dart';
 import 'common.dart';
 import 'overlays.dart';
 import 'remote_media.dart';
+import '../services/media_manifest.dart';
 
 /// The user's once-only folders/list choice (t368: kept across logout, changeable in Settings).
 const granthViewKey = Store.kGranthView;
@@ -50,13 +51,15 @@ List<Widget> granthViewPills({VoidCallback? after}) {
 }
 
 /// t421: the chooser / Settings loops — lotus for फ़ोल्डर, book for एक सूची (bundled, muted,
-/// ~300 KB each). The admin may replace them (`ui.chooser_video_folders` / `ui.chooser_video_list`).
+/// ~300 KB each). The admin may replace them with media-manifest videos of placement
+/// `chooser_folders` / `chooser_list` (a failing URL falls back to the bundled clip). Placement
+/// `settings` is a general Settings background and is NOT used here.
 const Map<String, String> kGranthViewVideoAsset = {
   'folders': 'assets/brand/video/lotus_folders.mp4',
   'list': 'assets/brand/video/book_list.mp4',
 };
 
-String? granthViewVideoUrl(String mode) => mode == 'list' ? RemoteConfig.I.uiChooserVideoList : RemoteConfig.I.uiChooserVideoFolders;
+ManifestVideo? granthViewVideoOverride(String mode) => MediaManifest.I.videoFor(mode == 'list' ? 'chooser_list' : 'chooser_folders');
 
 /// The looping video of a view option, with [fallback] (live miniature / icon) while it loads
 /// or if the phone cannot play it.
@@ -66,18 +69,23 @@ class GranthViewVideo extends StatelessWidget {
   final Widget fallback;
   final double radius;
   @override
-  Widget build(BuildContext context) => ClipRRect(
-        borderRadius: BorderRadius.circular(radius),
-        child: ColoredBox(
-          color: GColors.cream,
-          child: LoopVideo(
-            key: ValueKey('granth-view-video-$mode'),
-            asset: kGranthViewVideoAsset[mode == 'list' ? 'list' : 'folders'],
-            url: granthViewVideoUrl(mode),
-            fallback: fallback,
-          ),
+  Widget build(BuildContext context) {
+    final o = granthViewVideoOverride(mode);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: ColoredBox(
+        color: GColors.cream,
+        child: LoopVideo(
+          key: ValueKey('granth-view-video-$mode'),
+          asset: kGranthViewVideoAsset[mode == 'list' ? 'list' : 'folders'],
+          url: o?.url,
+          // bundled previews loop; an admin clip follows its own `loop` (default: once + hold)
+          loop: o?.loop ?? true,
+          fallback: fallback,
         ),
-      );
+      ),
+    );
+  }
 }
 
 /// Settings → ग्रंथ दृश्य (t421: "setting me bhi video chale"): the two options as the same

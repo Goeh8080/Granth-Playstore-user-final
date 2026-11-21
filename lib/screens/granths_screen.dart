@@ -21,7 +21,7 @@ import '../widgets/granth_view_setting.dart';
 import '../widgets/live_panel.dart';
 import '../widgets/granth_image.dart';
 import '../widgets/remote_media.dart';
-import '../services/remote_config.dart';
+import '../services/media_manifest.dart';
 import '../widgets/overlays.dart';
 import '../widgets/panel.dart';
 import '../widgets/pop.dart';
@@ -104,12 +104,13 @@ class _GranthsPanelState extends State<GranthsPanel> with LivePanel {
       onChanged: (v) { Places.setQuery(widget.placeKey, v); setState(() => _q = v); },
     );
     final grid = GridSwitch(locked: UiPrefs.I.gridLocked(gridPage), options: const [1, 2, 3], value: cols, onChanged: (v) => UiPrefs.I.setCols(Store.kGranthCols, v));
-    // Optional admin brand loop (`ui.brand_video_url`) in place of the header icon.
-    final brand = root ? RemoteConfig.I.uiBrandVideoUrl : null;
+    // t421: optional admin video for the Granth tab (manifest placement `granths`, no target)
+    // in place of the header icon: muted, play once + hold the last frame unless loop.
+    final brand = root ? MediaManifest.I.videoFor('granths') : null;
     final leading = widget.leading ??
         (brand == null
             ? null
-            : RemoteIcon(videoUrl: brand, size: 44, fallback: IconBox(tone: Tone.maroon, icon: 'library', size: 44, radius: 11, iconSize: 22)));
+            : RemoteIcon(videoUrl: brand.url, posterUrl: brand.posterUrl, loop: brand.loop, size: 44, fallback: IconBox(tone: Tone.maroon, icon: 'library', size: 44, radius: 11, iconSize: 22)));
     return SliverMainAxisGroup(slivers: [
       StickyHeader(
         child: Entry(

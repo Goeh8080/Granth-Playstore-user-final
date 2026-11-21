@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import '../ai/navigator/voice_navigator.dart' show NavTouchTarget;
 
 import '../models/models.dart';
 import '../models/structure.dart';
@@ -230,9 +229,7 @@ class _GranthCardState extends State<GranthCard> with SingleTickerProviderStateM
               child: Opacity(opacity: 1 - 0.25 * t, child: child),
             );
           },
-          child: NavTouchTarget(
-            hash: '#/pramans?granth=${g.id}',
-            child: RepaintBoundary(
+          child: RepaintBoundary(
             key: _card,
           child: GCard(
             padding: EdgeInsets.all(cols == 1 ? 16 : 10),
@@ -319,7 +316,6 @@ class _GranthCardState extends State<GranthCard> with SingleTickerProviderStateM
                 ),
               ]);
             }),
-          ),
           ),
           ),
         );

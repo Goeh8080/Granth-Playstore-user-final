@@ -1,8 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import '../ai/navigator/nav_voice_sheet.dart' show showNavVoiceSheet;
-import '../ai/navigator/voice_navigator.dart' show VoiceNavigator;
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../screens/support_chat.dart';
@@ -770,7 +768,7 @@ class _SettingsState extends State<_Settings> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([UiPrefs.I, FirebaseBridge.I, RemoteConfig.I, VoiceNavigator.I]),
+    listenable: Listenable.merge([UiPrefs.I, FirebaseBridge.I, RemoteConfig.I]),
     builder: (context, _) => SliverPadding(
       key: const ValueKey('settings-page'),
       padding: const EdgeInsets.fromLTRB(2, 4, 2, 24),
@@ -833,22 +831,6 @@ class _SettingsState extends State<_Settings> {
                     onTap: UiPrefs.I.taskbarForced ? null : () => UiPrefs.I.taskbar = false,
                   ),
                 ]),
-                if (RemoteConfig.I.navigatorEnabled) ...[
-                  _block('आवाज़ से खोलें (Navigator) · Hey Granth / Hey Tatv', [
-                    Pill(key: const ValueKey('set-nav-voice-on'), direct: true, label: 'चालू', tone: VoiceNavigator.I.optedIn ? PillTone.maroon : PillTone.plain, onTap: () => VoiceNavigator.I.setOptIn(true)),
-                    Pill(key: const ValueKey('set-nav-voice-off'), direct: true, label: 'बंद', tone: VoiceNavigator.I.optedIn ? PillTone.plain : PillTone.maroon, onTap: () => VoiceNavigator.I.setOptIn(false)),
-                  ]),
-                  if (VoiceNavigator.I.optedIn)
-                    _block('"Hey Granth" सुनते रहें (सिर्फ़ ऐप खुला हो तब)', [
-                      Pill(key: const ValueKey('set-nav-wake-on'), direct: true, label: 'चालू', tone: VoiceNavigator.I.wakeOn ? PillTone.maroon : PillTone.plain, onTap: () => VoiceNavigator.I.setWake(true)),
-                      Pill(key: const ValueKey('set-nav-wake-off'), direct: true, label: 'बंद (माइक बटन से)', tone: VoiceNavigator.I.wakeOn ? PillTone.plain : PillTone.maroon, onTap: () => VoiceNavigator.I.setWake(false)),
-                    ]),
-                  // Admin locked the voice (ui.navigator_voice_locked): no picker.
-                  if (VoiceNavigator.I.optedIn && !RemoteConfig.I.navigatorVoiceLocked)
-                    _block('नेविगेटर की आवाज़ (या बोलें "आवाज़ बदलो")', [
-                      Pill(key: const ValueKey('set-nav-voice-pick'), direct: true, label: 'आवाज़ चुनें', tone: PillTone.plain, onTap: () => showNavVoiceSheet(context, speaker: VoiceNavigator.I.speaker)),
-                    ]),
-                ],
                 _block('एनिमेशन', [
                   Pill(key: const ValueKey('set-anim-on'), direct: true, label: 'चालू', tone: UiPrefs.I.animations ? PillTone.maroon : PillTone.plain, onTap: () => UiPrefs.I.animations = true),
                   Pill(key: const ValueKey('set-anim-low'), direct: true, label: 'कम', tone: UiPrefs.I.animations ? PillTone.plain : PillTone.maroon, onTap: () => UiPrefs.I.animations = false),

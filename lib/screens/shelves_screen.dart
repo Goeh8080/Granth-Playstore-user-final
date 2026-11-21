@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import '../ai/navigator/voice_navigator.dart' show NavTouchTarget;
 
 import '../models/models.dart';
 import '../models/structure.dart';
@@ -121,7 +120,7 @@ double folderPicSize(int cols) => switch (cols) {
 class FolderRow extends StatelessWidget {
   const FolderRow({super.key, required this.leading, required this.title, required this.subtitle, required this.onTap, this.dim = false, this.cols = 1, this.navHash});
 
-  /// t304: the hash this folder opens (the voice Navigator shows its touch here).
+  /// The hash this folder opens (kept for callers; informational).
   final String? navHash;
 
   /// Builds the picture for the size this layout wants ([folderPicSize]).
@@ -136,11 +135,6 @@ class FolderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final w = _build(context);
-    return navHash == null ? w : NavTouchTarget(hash: navHash!, child: w);
-  }
-
-  Widget _build(BuildContext context) {
     final pic = leading(folderPicSize(cols));
     final titleColor = dim ? GColors.muted : GColors.maroon;
     final subColor = dim ? GColors.muted : GColors.saffronDark;

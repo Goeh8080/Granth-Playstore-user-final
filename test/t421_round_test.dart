@@ -1,35 +1,19 @@
 // t421 (Goutam, 21 Nov 2026): Granth tab "pehle jesa" (no hero), old folder logo sizes, the
 // grow-on-press, the chooser / Settings videos, admin media (the public media manifest),
-// the Navigator's cached-phrase-only voice and wake on opt-in.
+// and (later the same day) the AI Navigator removed.
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:granthprabandhan/ai/navigator/nav_phrases.dart';
-import 'package:granthprabandhan/ai/navigator/nav_tts.dart';
-import 'package:granthprabandhan/ai/navigator/voice_navigator.dart';
 import 'package:granthprabandhan/config.dart';
 import 'package:granthprabandhan/screens/shelves_screen.dart';
 import 'package:granthprabandhan/services/media_manifest.dart';
 import 'package:granthprabandhan/services/remote_config.dart';
-import 'package:granthprabandhan/services/storage.dart';
 import 'package:granthprabandhan/widgets/common.dart';
 import 'package:granthprabandhan/widgets/granth_view_setting.dart' show granthViewVideoOverride;
 import 'package:granthprabandhan/widgets/remote_media.dart';
 
 import 'helpers.dart';
-
-class _Speech implements NavSpeech {
-  @override
-  Future<bool> init() async => true;
-  @override
-  bool get listening => false;
-  @override
-  Future<void> listen({required void Function(NavHeard heard) onHeard, required void Function(String? error) onDone, required Duration listenFor, required Duration pauseFor, bool command = true}) async {}
-  @override
-  Future<void> stop() async {}
-}
 
 void main() {
   setUp(() async {
@@ -41,7 +25,6 @@ void main() {
     expect(kAppVersion, '1.0.1');
     expect(kBuildNumber, 2);
     expect(kAppFull, '1.0.1+2');
-    expect(kTtsUserAgent, contains('1.0.1'));
     expect(File('pubspec.yaml').readAsStringSync(), contains('version: 1.0.1+2'));
     final wf = File('.github/workflows/android-apk.yml').readAsStringSync();
     expect(wf, contains('name: Playstore - 1.0.1'));
@@ -155,32 +138,13 @@ void main() {
     expect(File('assets/brand/video/book_list.mp4').lengthSync(), lessThan(420 * 1024));
   });
 
-  test('wake phrase turns on with the opt-in (real default)', () async {
-    VoiceNavigator.debugReset();
-    VoiceNavigator.wakeOnOptIn = true;
-    addTearDown(() async {
-      await VoiceNavigator.I.setOptIn(false);
-      VoiceNavigator.wakeOnOptIn = false;
-    });
-    VoiceNavigator.I.speech = _Speech();
-    RemoteConfig.I.navigatorEnabled = true;
-    expect(await VoiceNavigator.I.setOptIn(true), isTrue);
-    expect(Store.I.getString(VoiceNavigator.kWake), '1');
-    expect(VoiceNavigator.I.wakeOn, isTrue);
-    RemoteConfig.I.navigatorEnabled = false;
-  });
-
-  test('cached-only voice: an uncached line is never POSTed; a cached line is', () async {
-    final sent = <String>[];
-    final c = TtsClient(endpoint: 'https://w.example', iid: () => null, uid: () => null, transport: (m, u, h, b, t) async {
-      sent.add(String.fromCharCodes(b ?? const []));
-      return (status: 503, contentType: 'application/json', body: Uint8List(0), retryAfter: null);
-    });
-    final sp = NavSpeaker(client: c, enabled: () => true, voice: () => kNavMaleVoice, cachedOnly: (_) => true);
-    expect(await sp.say('वेद खोल रहा हूँ'), isFalse);
-    expect(sp.lastSilent, isTrue);
-    expect(sent, isEmpty);
-    await sp.say(NavPhrases.male.opening('वेद'));
-    expect(sent.length, 1);
+  test('the AI Navigator is gone (Goutam 21 Nov): no mic permission, no speech plugin, taps only', () {
+    expect(Directory('lib/ai/navigator').existsSync(), isFalse);
+    expect(File('pubspec.yaml').readAsStringSync(), isNot(contains('speech_to_text')));
+    expect(File('android/app/src/main/AndroidManifest.xml').readAsStringSync(), isNot(contains('RECORD_AUDIO')));
+    final shell = File('lib/screens/home_shell.dart').readAsStringSync();
+    expect(shell, isNot(contains('NavHoldTrigger')));
+    expect(shell, isNot(contains('NavMicButton')));
+    expect(shell, contains("onTap: () => AppNav.I.openLink('#/ai')"));
   });
 }

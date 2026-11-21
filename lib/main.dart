@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'ai/navigator/voice_navigator.dart';
 import 'services/app_update.dart';
 import 'package:flutter/services.dart';
 
@@ -68,7 +67,6 @@ void main() {
       }
       try {
         AppNav.onEnterAi = () => ChatController.I.enterFresh();
-        VoiceNavigator.I.attach(appNavigatorKey); // t304: idle unless the admin + the user turned it on
         AppUpdate.I.attach(appNavigatorKey); // t306: admin update alert (optional config key)
         SupportService.uidOf = () => FirebaseBridge.I.uid;
         AppNav.I.restore();

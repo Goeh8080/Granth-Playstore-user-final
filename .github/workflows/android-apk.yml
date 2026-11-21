@@ -209,6 +209,33 @@ jobs:
           archive: false
           if-no-files-found: error
 
+      # Emulator / screenshot copy only (x86_64): built AFTER the two release files were copied
+      # to dist/, so it never touches them. Not for phones or Play; never fails the run.
+      - name: Emulator APK (x86_64, testing only)
+        if: env.DO_SIGN == 'true'
+        continue-on-error: true
+        env:
+          APP_KEY: ${{ secrets.APP_KEY }}
+        run: |
+          set +x
+          args=""
+          if [ -n "$APP_KEY" ]; then
+            printf '{"APP_KEY":"%s"}' "$APP_KEY" > "$RUNNER_TEMP/dd.json"
+            args="--dart-define-from-file=$RUNNER_TEMP/dd.json"
+          fi
+          flutter build apk --release --split-per-abi --target-platform android-x64 $args
+          mkdir -p emu
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk emu/Emulator-x86_64-1.0.1.apk
+          rm -f "$RUNNER_TEMP/dd.json"
+
+      - uses: actions/upload-artifact@v7
+        if: env.DO_SIGN == 'true'
+        continue-on-error: true
+        with:
+          path: emu/Emulator-x86_64-1.0.1.apk
+          archive: false
+          if-no-files-found: warn
+
       - name: Remove signing material
         if: always()
         run: rm -f android/key.properties android/app/google-services.json "$RUNNER_TEMP/satlok.keystore" "$RUNNER_TEMP/dd.json"

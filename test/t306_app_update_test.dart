@@ -37,11 +37,6 @@ void main() {
     expect(parseGranthViewMode({'granth_view_mode': 'folders', 'granthViewMode': 'list'}), 'folders');
     expect(parseGranthViewMode({'granth_view_mode': 'user_choice'}), isNull);
     expect(parseGranthViewMode({}), isNull);
-    expect(parseNavigatorEnabled({'navigator_enabled': true}, null), isTrue);
-    expect(parseNavigatorEnabled({'navigatorEnabled': true}, null), isTrue);
-    expect(parseNavigatorEnabled({'navigator_enabled': false, 'navigatorEnabled': true}, null), isFalse);
-    expect(parseNavigatorEnabled(null, {'navigator_enabled': true}), isTrue, reason: 'legacy flags location');
-    expect(parseNavigatorEnabled({}, {}), isFalse);
     final u = parseAppUpdate({'latestVersion': '1.0.2', 'message': 'm', 'playUrl': 'https://play.google.com/store/apps/details?id=com.granth.app.user', 'apkUrl': 'https://granth-admin.vedpuran8090.workers.dev/apk/abc.apk', 'force': false})!;
     expect(u.apkUrl, endsWith('/apk/abc.apk'));
     expect(u.isNewer, isTrue);

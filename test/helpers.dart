@@ -10,7 +10,6 @@ import 'package:granthprabandhan/services/storage.dart';
 import 'package:granthprabandhan/services/image_size.dart';
 import 'package:granthprabandhan/state/places.dart';
 import 'package:granthprabandhan/state/router.dart';
-import 'package:granthprabandhan/ai/navigator/voice_navigator.dart' show VoiceNavigator;
 import 'package:shared_preferences/shared_preferences.dart';
 
 Catalog sampleCatalog() => Catalog(
@@ -45,7 +44,6 @@ Future<void> setUpApp() async {
   ImageSizes.I.clear();
   LocalStats.I.debugReset();
   LoginGate.enabled = false;
-  VoiceNavigator.wakeOnOptIn = false; // t421: tests drive the fake recognizer by hand
   final store = CatalogStore(connectivity: const Stream.empty());
   CatalogStore.I = store;
   store.debugSetCatalog(sampleCatalog());

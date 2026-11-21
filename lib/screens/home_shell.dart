@@ -3,7 +3,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../widgets/zoom.dart';
-import '../ai/navigator/voice_navigator.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/services.dart';
 
@@ -404,10 +403,7 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
                       Positioned(
                         right: 16,
                         bottom: 36 + tabsH,
-                        // t361: hold = Navigator listens (admin switch on); tap opens Tatv AI.
-                        child: NavHoldTrigger(
-                          id: 'fab',
-                          child: Pressable(
+                        child: Pressable(
                           key: const ValueKey('ask-ai-fab'),
                           onTap: () => AppNav.I.openLink('#/ai'),
                           child: Container(
@@ -430,11 +426,7 @@ class _HomeShellState extends State<HomeShell> with TickerProviderStateMixin {
                             ),
                           ),
                         ),
-                        ),
                       ),
-                    // t304 Navigator voice: mic (admin + user opt-in only) and the touch ripple layer.
-                    Positioned(left: 16, bottom: 36 + tabsH, child: const NavMicButton()),
-                    const Positioned.fill(child: NavTouchLayer()),
                     // Round-3: the floating bar slides/fades in and out.
                     Positioned(
                       left: 0,
@@ -1057,8 +1049,7 @@ class BottomTabs extends StatelessWidget {
         ),
       ),
     );
-    // t361: hold the centre तत्त्व AI tab = Navigator listens (tap unchanged).
-    return i == 2 ? NavHoldTrigger(id: 'tab', child: tab) : tab;
+    return tab;
   }
 }
 

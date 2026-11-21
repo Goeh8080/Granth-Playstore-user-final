@@ -397,7 +397,7 @@ class AiClient {
   AiClient({String? endpoint, this.timeout = const Duration(seconds: 45), this.backoff = const Duration(milliseconds: 1500), this.header = kAiClientHeader, String? Function()? iid, String? Function()? uid, Future<String?> Function()? idToken})
     : endpoint = (endpoint ?? RemoteConfig.I.aiEndpoint ?? kAiEndpoint).replaceAll(RegExp(r'/+$'), ''),
       _iid = iid ?? (() => Analytics.I.iid),
-      _idToken = idToken ?? (() => FirebaseBridge.I.idToken());
+      _idToken = idToken ?? (() => FirebaseBridge.I.googleIdToken()); // Google sign-in only; never logged
 
   /// Stable install id (injectable for tests). Never throws into [ask]. (`uid` is accepted for
   /// old callers and ignored: t421 sends no raw uid.)
